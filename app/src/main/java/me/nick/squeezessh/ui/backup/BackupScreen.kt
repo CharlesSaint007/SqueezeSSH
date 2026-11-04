@@ -42,6 +42,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.nick.squeezessh.backup.BackupFile
 import me.nick.squeezessh.backup.BackupService
+import me.nick.squeezessh.backup.EncryptedBackup
+import me.nick.squeezessh.backup.ReadBackup
 import me.nick.squeezessh.backup.ImportMode
 import me.nick.squeezessh.backup.ImportResult
 import me.nick.squeezessh.backup.WrongPassphraseException
@@ -60,17 +62,24 @@ fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Un
     var busy by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<BackupFile?>(null) }
+    var locked by remember { mutableStateOf<EncryptedBackup?>(null) }
+    // An encrypted file's passphrase, kept after unlocking so it isn't asked for twice.
+    var unlockedWith by remember { mutableStateOf<String?>(null) }
 
-    val exportReady = !includeSecrets || (passphrase.length >= MIN_PASSPHRASE && passphrase == confirm)
+    val exportReady = passphrase.length >= MIN_PASSPHRASE && passphrase == confirm
 
     val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         busy = "Exporting…"
         scope.launch {
             message = runCatching {
-                val text = backup.export(if (includeSecrets) passphrase else null)
+                val text = backup.export(passphrase, includeSecrets)
                 write(context, uri, text)
-                if (includeSecrets) "Exported, with passwords and private keys." else "Exported. Passwords and private keys were not included."
+                if (includeSecrets) {
+                    "Exported and encrypted, with passwords and private keys."
+                } else {
+                    "Exported and encrypted. Passwords and private keys were not included."
+                }
             }.getOrElse { "Export failed: ${it.message}" }
             busy = null
             passphrase = ""
@@ -81,7 +90,14 @@ fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Un
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             runCatching { backup.read(read(context, uri)) }
-                .onSuccess { pending = it }
+                .onSuccess { r ->
+                    message = null
+                    unlockedWith = null
+                    when (r) {
+                        is ReadBackup.Locked -> locked = r.file
+                        is ReadBackup.Plain -> pending = r.file
+                    }
+                }
                 .onFailure { message = it.message ?: "Could not read the file" }
         }
     }
@@ -94,7 +110,8 @@ fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Un
             Text("Export", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Saves hosts, identities, keys (public halves), port forwards, snippets, known hosts and settings to " +
-                    "a file. On a new phone, import it, then sign in to Bitwarden to bring back synced private keys.",
+                    "a file encrypted with a passphrase you choose. On a new phone, import it, then sign in to " +
+                    "Bitwarden to bring back synced private keys.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -105,23 +122,21 @@ fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Un
                 Column(Modifier.weight(1f)) {
                     Text("Include passwords and private keys", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Encrypted with a passphrase you choose. Needed for keys that aren't in Bitwarden.",
+                        "Needed for keys that aren't in Bitwarden, and for saved passwords.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Switch(checked = includeSecrets, onCheckedChange = { includeSecrets = it })
             }
-            if (includeSecrets) {
-                PassphraseField(passphrase, { passphrase = it }, "Passphrase", supporting = "At least $MIN_PASSPHRASE characters. It can't be recovered.")
-                PassphraseField(
-                    confirm,
-                    { confirm = it },
-                    "Repeat passphrase",
-                    error = confirm.isNotEmpty() && confirm != passphrase,
-                    supporting = if (confirm.isNotEmpty() && confirm != passphrase) "Doesn't match" else null,
-                )
-            }
+            PassphraseField(passphrase, { passphrase = it }, "Passphrase", supporting = "At least $MIN_PASSPHRASE characters. It can't be recovered.")
+            PassphraseField(
+                confirm,
+                { confirm = it },
+                "Repeat passphrase",
+                error = confirm.isNotEmpty() && confirm != passphrase,
+                supporting = if (confirm.isNotEmpty() && confirm != passphrase) "Doesn't match" else null,
+            )
             Button(
                 enabled = exportReady && busy == null,
                 onClick = { createDocument.launch("squeezessh-${LocalDate.now()}.squeezessh.json") },
@@ -140,14 +155,41 @@ fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Un
         }
     }
 
+    locked?.let { file ->
+        UnlockDialog(
+            busy = busy != null,
+            wrongPassphrase = message == "Wrong passphrase",
+            onUnlock = { pass ->
+                busy = "Unlocking…"
+                scope.launch {
+                    try {
+                        pending = backup.unlock(file, pass)
+                        unlockedWith = pass
+                        locked = null
+                        message = null
+                    } catch (e: WrongPassphraseException) {
+                        message = "Wrong passphrase"
+                    } catch (e: Exception) {
+                        locked = null
+                        message = "Import failed: ${e.message}"
+                    } finally {
+                        busy = null
+                    }
+                }
+            },
+            onDismiss = { locked = null; if (message == "Wrong passphrase") message = null },
+        )
+    }
+
     pending?.let { file ->
         ImportDialog(
             file = file,
+            alreadyUnlocked = unlockedWith != null,
             onImport = { mode, pass ->
                 busy = "Importing…"
                 scope.launch {
                     try {
-                        val result = backup.import(file, mode, pass)
+                        val result = backup.import(file, mode, pass ?: unlockedWith)
                         pending = null
                         message = summary(result)
                         onImported()
@@ -164,14 +206,40 @@ fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Un
             },
             wrongPassphrase = message == "Wrong passphrase",
             busy = busy != null,
-            onDismiss = { pending = null; if (message == "Wrong passphrase") message = null },
+            onDismiss = { pending = null; unlockedWith = null; if (message == "Wrong passphrase") message = null },
         )
     }
 }
 
 @Composable
+private fun UnlockDialog(busy: Boolean, wrongPassphrase: Boolean, onUnlock: (String) -> Unit, onDismiss: () -> Unit) {
+    var passphrase by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Encrypted backup") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Enter the passphrase this backup was exported with.")
+                PassphraseField(
+                    passphrase,
+                    { passphrase = it },
+                    "Backup passphrase",
+                    error = wrongPassphrase,
+                    supporting = if (wrongPassphrase) "Wrong passphrase" else null,
+                )
+                if (busy) Text("Unlocking…")
+            }
+        },
+        confirmButton = { TextButton(enabled = !busy && passphrase.isNotEmpty(), onClick = { onUnlock(passphrase) }) { Text("Unlock") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
 private fun ImportDialog(
     file: BackupFile,
+    /** Unlocked already (encrypted file), so there's nothing more to ask for. */
+    alreadyUnlocked: Boolean,
     onImport: (ImportMode, String?) -> Unit,
     wrongPassphrase: Boolean,
     busy: Boolean,
@@ -206,7 +274,17 @@ private fun ImportDialog(
                         }
                     }
                 }
-                if (file.secrets != null) {
+                if (alreadyUnlocked) {
+                    Text(
+                        if (file.includedSecrets != null) {
+                            "Includes passwords and private keys."
+                        } else {
+                            "No passwords or private keys in this backup. Keys come back once Bitwarden sync has them."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (file.secrets != null) {
                     PassphraseField(
                         passphrase,
                         { passphrase = it },

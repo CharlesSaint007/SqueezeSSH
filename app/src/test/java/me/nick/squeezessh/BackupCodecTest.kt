@@ -73,9 +73,49 @@ class BackupCodecTest {
     fun otherFilesAndNewerSchemasAreRejected() {
         assertThrows(BackupFormatException::class.java) { BackupCodec.decode("""{"hello":"world"}""") }
         assertThrows(BackupFormatException::class.java) { BackupCodec.decode("not json") }
+        assertThrows(BackupFormatException::class.java) { BackupCodec.read("""{"hello":"world"}""") }
+        assertThrows(BackupFormatException::class.java) { BackupCodec.read("not json") }
         val newer = BackupCodec.encode(file()).replace("\"schemaVersion\": 1", "\"schemaVersion\": 99")
         val e = assertThrows(BackupFormatException::class.java) { BackupCodec.decode(newer) }
         assertTrue(e.message!!.contains("newer"))
+    }
+
+    @Test
+    fun wholeFileEncryptionRoundTripsAndHidesEverything() {
+        val original = file().copy(includedSecrets = secrets)
+        val text = BackupCodec.encodeEncrypted(original, "correct horse", fast)
+        // Nothing readable on disk: not the host, not the secrets.
+        for (plain in listOf("pi5", "hunter2", "OPENSSH PRIVATE KEY", "hosts")) assertFalse(plain, text.contains(plain))
+        val read = BackupCodec.read(text)
+        assertTrue(read is me.nick.squeezessh.backup.ReadBackup.Locked)
+        val locked = (read as me.nick.squeezessh.backup.ReadBackup.Locked).file
+        assertEquals(original, BackupCodec.decrypt(locked, "correct horse"))
+        assertThrows(WrongPassphraseException::class.java) { BackupCodec.decrypt(locked, "wrong") }
+    }
+
+    @Test
+    fun encryptedWithoutSecretsStillNeedsThePassphrase() {
+        val text = BackupCodec.encodeEncrypted(file(), "pw-12345678", fast)
+        assertFalse(text.contains("pi5"))
+        val locked = (BackupCodec.read(text) as me.nick.squeezessh.backup.ReadBackup.Locked).file
+        assertNull(BackupCodec.decrypt(locked, "pw-12345678").includedSecrets)
+    }
+
+    @Test
+    fun olderUnencryptedFilesStillRead() {
+        val legacy = BackupCodec.encode(file(secrets = BackupCodec.seal(secrets, "pw", fast)))
+        val read = BackupCodec.read(legacy)
+        assertTrue(read is me.nick.squeezessh.backup.ReadBackup.Plain)
+        val plain = (read as me.nick.squeezessh.backup.ReadBackup.Plain).file
+        assertEquals(secrets, BackupCodec.open(plain.secrets!!, "pw"))
+    }
+
+    @Test
+    fun wholeFileAndLegacySecretsCiphertextsAreNotInterchangeable() {
+        // The two uses bind different associated data, so one can't be passed off as the other.
+        val legacySealed = BackupCodec.seal(secrets, "pw", fast)
+        val envelope = me.nick.squeezessh.backup.EncryptedBackup(exportedAt = 0, sealed = legacySealed)
+        assertThrows(WrongPassphraseException::class.java) { BackupCodec.decrypt(envelope, "pw") }
     }
 
     @Test
