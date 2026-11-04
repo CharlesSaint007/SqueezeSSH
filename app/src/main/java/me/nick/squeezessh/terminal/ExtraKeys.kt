@@ -1,5 +1,6 @@
 package me.nick.squeezessh.terminal
 
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicText
@@ -28,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -170,10 +172,16 @@ fun ExtraKeysBar(
 
 @Composable
 private fun RowScope.KeyCell(onClick: () -> Unit, content: @Composable () -> Unit) {
+    val view = LocalView.current
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick),
+        modifier = Modifier.weight(1f).fillMaxHeight().clickable {
+            // The same tick as a soft-keyboard key; it follows the system "touch feedback" setting.
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
     ) { content() }
 }
 
-private val KEY_HEIGHT = 42.dp
+/** Two rows come to about 70dp, close to the key bars of other terminal apps. */
+private val KEY_HEIGHT = 35.dp

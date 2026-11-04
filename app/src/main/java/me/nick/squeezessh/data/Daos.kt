@@ -22,6 +22,15 @@ interface HostDao {
 
     @Query("UPDATE hosts SET lastConnectedAt = :at, connectCount = connectCount + 1 WHERE id = :id")
     suspend fun markConnected(id: String, at: Long = System.currentTimeMillis())
+
+    @Query("SELECT * FROM hosts")
+    suspend fun getAll(): List<HostEntity>
+
+    @Upsert
+    suspend fun upsertAll(hosts: List<HostEntity>)
+
+    @Query("DELETE FROM hosts")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -37,6 +46,12 @@ interface IdentityDao {
 
     @Delete
     suspend fun delete(identity: IdentityEntity)
+
+    @Query("SELECT * FROM identities")
+    suspend fun getAll(): List<IdentityEntity>
+
+    @Query("DELETE FROM identities")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -58,6 +73,9 @@ interface KeyDao {
 
     @Delete
     suspend fun delete(key: KeyEntity)
+
+    @Query("DELETE FROM keys")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -70,6 +88,15 @@ interface KnownHostDao {
 
     @Query("DELETE FROM known_hosts WHERE hostPort = :hostPort")
     suspend fun forget(hostPort: String)
+
+    @Query("SELECT * FROM known_hosts")
+    suspend fun getAll(): List<KnownHostEntity>
+
+    @Upsert
+    suspend fun upsertAll(entries: List<KnownHostEntity>)
+
+    @Query("DELETE FROM known_hosts")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -85,6 +112,12 @@ interface ForwardDao {
 
     @Upsert
     suspend fun upsertAll(forwards: List<ForwardEntity>)
+
+    @Query("SELECT * FROM forwards")
+    suspend fun getAll(): List<ForwardEntity>
+
+    @Query("DELETE FROM forwards")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -100,4 +133,13 @@ interface SnippetDao {
 
     @Delete
     suspend fun delete(snippet: SnippetEntity)
+
+    @Query("SELECT * FROM snippets")
+    suspend fun getAll(): List<SnippetEntity>
+
+    @Upsert
+    suspend fun upsertAll(snippets: List<SnippetEntity>)
+
+    @Query("DELETE FROM snippets")
+    suspend fun deleteAll()
 }

@@ -64,6 +64,8 @@ android {
 
     buildFeatures {
         compose = true
+        // VERSION_NAME is recorded in backup files.
+        buildConfig = true
     }
 
     packaging {

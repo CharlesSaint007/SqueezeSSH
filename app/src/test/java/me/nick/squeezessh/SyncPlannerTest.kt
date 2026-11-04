@@ -12,10 +12,18 @@ import java.time.Instant
 class SyncPlannerTest {
     private val folder = "folder-1"
 
-    private fun local(fp: String, cipherId: String? = null, rev: String? = null, dirty: Boolean = false, sync: Boolean = true, updatedAt: Long = 0) =
+    private fun local(
+        fp: String,
+        cipherId: String? = null,
+        rev: String? = null,
+        dirty: Boolean = false,
+        sync: Boolean = true,
+        updatedAt: Long = 0,
+        secret: String = "s",
+    ) =
         KeyEntity(
             id = "local-$fp", name = fp, type = "ssh-ed25519", publicKey = "ssh-ed25519 AAAA", fingerprint = fp,
-            privateKeySecretId = "s", bitwardenCipherId = cipherId, bitwardenRevisionDate = rev,
+            privateKeySecretId = secret, bitwardenCipherId = cipherId, bitwardenRevisionDate = rev,
             bitwardenSync = sync, bitwardenDirty = dirty, updatedAt = updatedAt,
         )
 
@@ -83,6 +91,18 @@ class SyncPlannerTest {
     @Test
     fun keysWithSyncOffAreLeftAloneAndNotReimported() {
         assertEquals(emptyList<String>(), plan(listOf(local("A", sync = false)), listOf(remote("r1", "A"))).map(::describe))
+    }
+
+    @Test
+    fun keyRestoredWithoutPrivateHalfIsPulledNeverPushed() {
+        val missing = KeyEntity.MISSING_SECRET_PREFIX + "x"
+        // Linked and unchanged in the vault: still pulled, to get the private key back.
+        val linked = local("A", "r1", "2026-01-01T00:00:00Z", dirty = true, secret = missing)
+        assertEquals(listOf("Pull:A"), plan(listOf(linked), listOf(remote("r1", "A", "2026-01-01T00:00:00Z"))).map(::describe))
+        // Not linked and not in the vault: nothing to upload.
+        assertEquals(emptyList<String>(), plan(listOf(local("B", secret = missing)), emptyList()).map(::describe))
+        // Not linked but the vault has it: linked (and the sync fills in the private key).
+        assertEquals(listOf("Link:C"), plan(listOf(local("C", secret = missing)), listOf(remote("r3", "C"))).map(::describe))
     }
 
     @Test

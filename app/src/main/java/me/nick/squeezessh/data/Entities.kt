@@ -102,7 +102,17 @@ data class KeyEntity(
     val createdAt: Long = System.currentTimeMillis(),
     /** When the key was last changed on this device; breaks ties when both sides changed. */
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
-)
+) {
+    /**
+     * False for a key restored from a backup made without secrets: the app knows the key but not its private
+     * half until Bitwarden sync (or an import with secrets) supplies it.
+     */
+    val hasPrivateKey: Boolean get() = !privateKeySecretId.startsWith(MISSING_SECRET_PREFIX)
+
+    companion object {
+        const val MISSING_SECRET_PREFIX = "missing-"
+    }
+}
 
 /** A host key we have seen and the user accepted, keyed by `host:port` like OpenSSH's known_hosts. */
 @Entity(tableName = "known_hosts", primaryKeys = ["hostPort", "keyType"])

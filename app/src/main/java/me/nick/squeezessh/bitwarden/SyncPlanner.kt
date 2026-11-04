@@ -47,6 +47,7 @@ sealed class SyncAction {
  * - New vault items are imported only from [folderId] when [folderOnly] is set; linked items are followed
  *   wherever they are moved in the vault.
  * - Keys with sync turned off are left alone, and a vault copy of one is not imported either.
+ * - A key restored from a backup without its private half is pulled from the vault, never pushed.
  */
 object SyncPlanner {
     fun plan(locals: List<KeyEntity>, remotes: List<RemoteSshKey>, folderId: String?, folderOnly: Boolean): List<SyncAction> {
@@ -65,6 +66,8 @@ object SyncPlanner {
             claimed += cipherId
             val remoteChanged = !sameInstant(remote.revisionDate, local.bitwardenRevisionDate)
             actions += when {
+                // Restored from a backup without its private key: only the vault can supply it.
+                !local.hasPrivateKey -> SyncAction.Pull(local, remote)
                 remoteChanged && local.bitwardenDirty -> {
                     if (parse(remote.revisionDate) >= Instant.ofEpochMilli(local.updatedAt)) {
                         SyncAction.Pull(local, remote, conflict = true)
@@ -84,7 +87,7 @@ object SyncPlanner {
             if (match != null) {
                 claimed += match.id
                 actions += SyncAction.Link(local, match)
-            } else {
+            } else if (local.hasPrivateKey) {
                 actions += SyncAction.Create(local)
             }
         }

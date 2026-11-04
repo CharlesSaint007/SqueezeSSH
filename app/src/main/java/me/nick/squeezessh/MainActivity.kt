@@ -30,6 +30,7 @@ import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.terminal.TerminalScreen
 import me.nick.squeezessh.ui.SettingsScreen
+import me.nick.squeezessh.ui.backup.BackupScreen
 import me.nick.squeezessh.ui.bitwarden.BitwardenScreen
 import me.nick.squeezessh.ui.connect.ConnectScreen
 import me.nick.squeezessh.ui.hosts.HostEditScreen
@@ -218,6 +219,14 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.back() },
                         )
                     }
+                    composable("backup") {
+                        BackupScreen(
+                            backup = app.backup,
+                            // Restored keys may need their private halves from the vault.
+                            onImported = { bitwarden.requestSync(0) },
+                            onBack = { nav.back() },
+                        )
+                    }
                     composable("bitwarden") {
                         BitwardenScreen(sync = bitwarden, status = syncStatus, onBack = { nav.back() })
                     }
@@ -232,6 +241,7 @@ class MainActivity : ComponentActivity() {
                             onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
                             onVolumeKeysFontSize = { on -> scope.launch { repo.setVolumeKeysFontSize(on) } },
                             onBitwarden = { nav.navigate("bitwarden") },
+                            onBackup = { nav.navigate("backup") },
                             onBack = { nav.back() },
                         )
                     }

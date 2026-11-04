@@ -202,7 +202,16 @@ class BitwardenSync(private val vault: Vault, private val secrets: SecretStore) 
                         vault.addSyncedKey(r.name, r.privateKey, r.id, r.revisionDate)
                         pulled++
                     }
-                    is SyncAction.Link -> vault.markSynced(action.local, action.remote.id, action.remote.revisionDate)
+                    is SyncAction.Link -> {
+                        val r = action.remote
+                        if (action.local.hasPrivateKey) {
+                            vault.markSynced(action.local, r.id, r.revisionDate)
+                        } else {
+                            // Restored from a backup without secrets: the vault supplies the private key.
+                            vault.applySyncedKey(action.local, r.name, r.privateKey, r.id, r.revisionDate)
+                            pulled++
+                        }
+                    }
                     is SyncAction.Pull -> {
                         val r = action.remote
                         vault.applySyncedKey(action.local, r.name, r.privateKey, r.id, r.revisionDate)

@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -14,7 +15,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -163,12 +166,16 @@ fun TerminalScreen(
                             currentFontSp = { currentFontSp.value },
                             onFontSizeChange = { onFontSizeChangeState.value(it) },
                             volumeKeysFontSize = { volumeKeysState.value },
+                            onTap = { entry.keyBarVisible = !entry.keyBarVisible },
                         ),
                     )
                     attachSession(entry.session)
                     // Focus can only be taken once the view is in the window; until then key presses would go
-                    // to whatever Compose focused first.
-                    post { requestFocus() }
+                    // to whatever Compose focused first. A live session opens with the keyboard up, ready to type.
+                    post {
+                        requestFocus()
+                        if (entry.session.isRunning) showKeyboardWhenFocused(this)
+                    }
                 }
             },
             update = { view ->
@@ -178,22 +185,27 @@ fun TerminalScreen(
             },
             onRelease = { state.view = null },
         )
-        ExtraKeysBar(
-            rows = if (state.functionKeys) FunctionKeys else MainKeys,
-            activeModifiers = buildSet {
-                if (state.ctrl) add(StickyModifier.Ctrl)
-                if (state.alt) add(StickyModifier.Alt)
-            },
-            keyboardVisible = keyboardVisible,
-            onKey = { key ->
-                onExtraKey(key, state, entry.session)
-                // Tapping a Compose button moves focus off the terminal; hand it back.
-                state.view?.requestFocus()
-            },
-            onToggleKeyboard = {
-                state.view?.let { if (keyboardVisible) hideKeyboard(it) else showKeyboard(it) }
-            },
-        )
+        if (entry.keyBarVisible) {
+            ExtraKeysBar(
+                rows = if (state.functionKeys) FunctionKeys else MainKeys,
+                activeModifiers = buildSet {
+                    if (state.ctrl) add(StickyModifier.Ctrl)
+                    if (state.alt) add(StickyModifier.Alt)
+                },
+                keyboardVisible = keyboardVisible,
+                onKey = { key ->
+                    onExtraKey(key, state, entry.session)
+                    // Tapping a Compose button moves focus off the terminal; hand it back.
+                    state.view?.requestFocus()
+                },
+                onToggleKeyboard = {
+                    state.view?.let { if (keyboardVisible) hideKeyboard(it) else showKeyboard(it) }
+                },
+            )
+        } else {
+            // The bar normally covers the navigation-bar area; without it, keep the terminal clear of it.
+            Spacer(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars))
+        }
     }
 
     when (state.panel) {
@@ -295,6 +307,24 @@ private fun showKeyboard(view: TerminalView) {
     view.context.getSystemService(InputMethodManager::class.java).showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
 }
 
+/**
+ * Show the keyboard once the window has input focus. Asked for any earlier (as the screen opens, mid
+ * navigation transition), the input method ignores the request.
+ */
+private fun showKeyboardWhenFocused(view: TerminalView) {
+    if (view.hasWindowFocus()) {
+        showKeyboard(view)
+        return
+    }
+    view.viewTreeObserver.addOnWindowFocusChangeListener(object : ViewTreeObserver.OnWindowFocusChangeListener {
+        override fun onWindowFocusChanged(hasFocus: Boolean) {
+            if (!hasFocus) return
+            view.viewTreeObserver.removeOnWindowFocusChangeListener(this)
+            showKeyboard(view)
+        }
+    })
+}
+
 private fun hideKeyboard(view: TerminalView) {
     view.context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(view.windowToken, 0)
 }
@@ -341,6 +371,7 @@ private class ScreenViewClient(
     private val currentFontSp: () -> Int,
     private val onFontSizeChange: (Int) -> Unit,
     private val volumeKeysFontSize: () -> Boolean,
+    private val onTap: () -> Unit,
 ) : TerminalViewClient {
     private fun stepFont(step: Int) {
         val next = (currentFontSp() + step).coerceIn(Settings.MIN_FONT_SIZE_SP, Settings.MAX_FONT_SIZE_SP)
@@ -357,8 +388,9 @@ private class ScreenViewClient(
         return scale
     }
 
+    // A short tap shows or hides the key bar (the keyboard is toggled from the bar).
     override fun onSingleTapUp(e: MotionEvent) {
-        state.view?.let { showKeyboard(it) }
+        onTap()
     }
 
     override fun shouldBackButtonBeMappedToEscape() = false
