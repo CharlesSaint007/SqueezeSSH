@@ -50,7 +50,8 @@ Each host can have port forwards, set up in the host's settings:
 Forwards listen on `127.0.0.1` unless you allow other devices. They start when the host connects (or from the
 session with **FN → PORTS**, which also shows each forward's status and errors), and stop when it disconnects.
 
-**Snippets** (*⋮ → Snippets*) are saved commands. In a session, **FN → SNIP** types one in. A host can also run
+**Snippets** (*⋮ → Snippets*) are saved commands. In a session, **long-press the terminal** or use **FN → SNIP**
+to type one in. (Long-press used to start text selection; that's now *Select text to copy* in the same list.) A host can also run
 a *startup snippet* when it connects.
 
 ## Backup and moving to a new phone

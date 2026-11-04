@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Typeface
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ViewTreeObserver
@@ -69,6 +70,9 @@ private class TerminalState {
     var alt by mutableStateOf(false)
     var functionKeys by mutableStateOf(false)
     var panel by mutableStateOf<SessionPanel?>(null)
+
+    /** Where the last long press was, so "Select text" can start the selection there. */
+    var longPressEvent: MotionEvent? = null
 
     fun releaseModifiers() {
         ctrl = false
@@ -180,6 +184,11 @@ fun TerminalScreen(
                             onFontSizeChange = { onFontSizeChangeState.value(it) },
                             volumeKeysFontSize = { volumeKeysState.value },
                             onTap = { entry.keyBarVisible = !entry.keyBarVisible },
+                            onLongPressed = { e ->
+                                state.view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                state.longPressEvent = MotionEvent.obtain(e)
+                                state.panel = SessionPanel.Snippets
+                            },
                         ),
                     )
                     attachSession(entry.session)
@@ -242,7 +251,13 @@ fun TerminalScreen(
                 state.view?.requestFocus()
             },
             onManage = { state.panel = null; onManageSnippets() },
-            onDismiss = { state.panel = null },
+            onSelectText = state.longPressEvent?.let { event ->
+                {
+                    state.panel = null
+                    state.view?.startTextSelectionMode(event)
+                }
+            },
+            onDismiss = { state.panel = null; state.longPressEvent = null },
         )
         SessionPanel.Forwards -> ForwardsSheet(entry.forwards, onDismiss = { state.panel = null })
         null -> Unit
@@ -301,7 +316,10 @@ private fun onExtraKey(key: ExtraKey, state: TerminalState, session: TerminalSes
             StickyModifier.Alt -> state.alt = !state.alt
         }
         is ExtraKey.Page -> state.functionKeys = key.functionKeys
-        is ExtraKey.Panel -> state.panel = key.panel
+        is ExtraKey.Panel -> {
+            state.longPressEvent = null
+            state.panel = key.panel
+        }
         is ExtraKey.Code -> {
             var mod = 0
             if (state.ctrl) mod = mod or KeyHandler.KEYMOD_CTRL
@@ -400,6 +418,7 @@ private class ScreenViewClient(
     private val onFontSizeChange: (Int) -> Unit,
     private val volumeKeysFontSize: () -> Boolean,
     private val onTap: () -> Unit,
+    private val onLongPressed: (MotionEvent) -> Unit,
 ) : TerminalViewClient {
     private fun stepFont(step: Int) {
         val next = (currentFontSp() + step).coerceIn(Settings.MIN_FONT_SIZE_SP, Settings.MAX_FONT_SIZE_SP)
@@ -440,7 +459,11 @@ private class ScreenViewClient(
     // Swallow the matching key-up too, so the system doesn't show its volume panel.
     override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean =
         volumeKeysFontSize() && (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
-    override fun onLongPress(event: MotionEvent): Boolean = false
+    // A long press opens the snippet picker (text selection moves to a button in it).
+    override fun onLongPress(event: MotionEvent): Boolean {
+        onLongPressed(event)
+        return true
+    }
 
     // The sticky modifiers are consumed by the next key, so reading one also releases it.
     override fun readControlKey(): Boolean = state.ctrl.also { if (it) state.ctrl = false }
