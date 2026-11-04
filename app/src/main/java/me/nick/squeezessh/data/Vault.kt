@@ -19,12 +19,29 @@ class Vault(private val db: AppDatabase, private val secrets: SecretStore) {
     val hosts: Flow<List<HostEntity>> = db.hosts().observeAll()
     val identities: Flow<List<IdentityEntity>> = db.identities().observeAll()
     val keys: Flow<List<KeyEntity>> = db.keys().observeAll()
+    val snippets: Flow<List<SnippetEntity>> = db.snippets().observeAll()
 
     suspend fun host(id: String) = db.hosts().get(id)
     suspend fun identity(id: String) = db.identities().get(id)
     suspend fun key(id: String) = db.keys().get(id)
 
     suspend fun saveHost(host: HostEntity) = db.hosts().upsert(host)
+
+    /** Save a host together with its full list of port forwards, replacing any it had. */
+    suspend fun saveHost(host: HostEntity, forwards: List<ForwardEntity>) = db.withTransaction {
+        db.hosts().upsert(host)
+        db.forwards().deleteForHost(host.id)
+        db.forwards().upsertAll(forwards.map { it.copy(hostId = host.id) })
+    }
+
+    suspend fun forwards(hostId: String): List<ForwardEntity> = db.forwards().forHost(hostId)
+    fun observeForwards(hostId: String): Flow<List<ForwardEntity>> = db.forwards().observeForHost(hostId)
+
+    // ---- snippets ----
+
+    suspend fun snippet(id: String) = db.snippets().get(id)
+    suspend fun saveSnippet(snippet: SnippetEntity) = db.snippets().upsert(snippet)
+    suspend fun deleteSnippet(snippet: SnippetEntity) = db.snippets().delete(snippet)
     suspend fun deleteHost(host: HostEntity) = db.hosts().delete(host)
     suspend fun markConnected(hostId: String) = db.hosts().markConnected(hostId)
 

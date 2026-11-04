@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import com.termux.terminal.KeyHandler
+import kotlinx.coroutines.delay
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -51,7 +53,9 @@ import com.termux.view.TerminalViewClient
 import me.nick.squeezessh.session.NoOpSessionClient
 import me.nick.squeezessh.session.SessionEntry
 import me.nick.squeezessh.session.SessionManager
+import me.nick.squeezessh.data.SnippetEntity
 import me.nick.squeezessh.settings.ExitBehavior
+import me.nick.squeezessh.ssh.SnippetText
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.ui.theme.ColorMath
 
@@ -61,6 +65,7 @@ private class TerminalState {
     var ctrl by mutableStateOf(false)
     var alt by mutableStateOf(false)
     var functionKeys by mutableStateOf(false)
+    var panel by mutableStateOf<SessionPanel?>(null)
 
     fun releaseModifiers() {
         ctrl = false
@@ -77,6 +82,8 @@ fun TerminalScreen(
     onFontSizeChange: (Int) -> Unit,
     /** Volume up/down change the font size while this screen is shown. */
     volumeKeysFontSize: Boolean,
+    snippets: List<SnippetEntity>,
+    onManageSnippets: () -> Unit,
     exitBehavior: ExitBehavior,
     onRememberExitBehavior: (ExitBehavior) -> Unit,
     /** Leave the screen; [keepRunning] says whether the session stays open in the background. */
@@ -103,9 +110,20 @@ fun TerminalScreen(
     val onFontSizeChangeState = rememberUpdatedState(onFontSizeChange)
     val volumeKeysState = rememberUpdatedState(volumeKeysFontSize)
 
+    // When the remote side ends the session (`exit`, a dropped connection), leave the screen; there is nothing
+    // left to type into. If it ended on its own right after connecting, the message stays briefly visible.
+    val leave = rememberUpdatedState(onLeave)
+    var finished by remember(entry.id) { mutableStateOf(!entry.session.isRunning) }
+    LaunchedEffect(finished) {
+        if (finished) {
+            delay(FINISHED_LINGER_MS)
+            leave.value(false)
+        }
+    }
+
     // Attach this screen to the session's events while it is shown; sessions keep running when it is not.
     DisposableEffect(entry.id) {
-        sessionManager.client.delegate = screenSessionClient(context, state, onFinished = { /* stay on screen */ })
+        sessionManager.client.delegate = screenSessionClient(context, state, onFinished = { finished = true })
         onDispose { sessionManager.client.delegate = null }
     }
 
@@ -178,6 +196,21 @@ fun TerminalScreen(
         )
     }
 
+    when (state.panel) {
+        SessionPanel.Snippets -> SnippetPicker(
+            snippets = snippets,
+            onPick = { snippet ->
+                state.panel = null
+                entry.session.write(SnippetText.of(snippet))
+                state.view?.requestFocus()
+            },
+            onManage = { state.panel = null; onManageSnippets() },
+            onDismiss = { state.panel = null },
+        )
+        SessionPanel.Forwards -> ForwardsSheet(entry.forwards, onDismiss = { state.panel = null })
+        null -> Unit
+    }
+
     if (askExit) {
         ExitDialog(
             label = entry.label,
@@ -231,6 +264,7 @@ private fun onExtraKey(key: ExtraKey, state: TerminalState, session: TerminalSes
             StickyModifier.Alt -> state.alt = !state.alt
         }
         is ExtraKey.Page -> state.functionKeys = key.functionKeys
+        is ExtraKey.Panel -> state.panel = key.panel
         is ExtraKey.Code -> {
             var mod = 0
             if (state.ctrl) mod = mod or KeyHandler.KEYMOD_CTRL
@@ -264,6 +298,9 @@ private fun showKeyboard(view: TerminalView) {
 private fun hideKeyboard(view: TerminalView) {
     view.context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(view.windowToken, 0)
 }
+
+/** How long the "[Connection closed]" line stays on screen before returning to the host list. */
+private const val FINISHED_LINGER_MS = 600L
 
 private var cachedTypeface: Typeface? = null
 

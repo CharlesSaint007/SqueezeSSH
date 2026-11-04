@@ -71,3 +71,33 @@ interface KnownHostDao {
     @Query("DELETE FROM known_hosts WHERE hostPort = :hostPort")
     suspend fun forget(hostPort: String)
 }
+
+@Dao
+interface ForwardDao {
+    @Query("SELECT * FROM forwards WHERE hostId = :hostId ORDER BY type, bindPort")
+    suspend fun forHost(hostId: String): List<ForwardEntity>
+
+    @Query("SELECT * FROM forwards WHERE hostId = :hostId ORDER BY type, bindPort")
+    fun observeForHost(hostId: String): Flow<List<ForwardEntity>>
+
+    @Query("DELETE FROM forwards WHERE hostId = :hostId")
+    suspend fun deleteForHost(hostId: String)
+
+    @Upsert
+    suspend fun upsertAll(forwards: List<ForwardEntity>)
+}
+
+@Dao
+interface SnippetDao {
+    @Query("SELECT * FROM snippets ORDER BY name COLLATE NOCASE")
+    fun observeAll(): Flow<List<SnippetEntity>>
+
+    @Query("SELECT * FROM snippets WHERE id = :id")
+    suspend fun get(id: String): SnippetEntity?
+
+    @Upsert
+    suspend fun upsert(snippet: SnippetEntity)
+
+    @Delete
+    suspend fun delete(snippet: SnippetEntity)
+}

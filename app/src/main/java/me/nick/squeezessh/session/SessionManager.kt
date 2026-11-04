@@ -5,6 +5,8 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import me.nick.squeezessh.ssh.ForwardController
+import me.nick.squeezessh.ssh.SshShellBackend
 import me.nick.squeezessh.ui.theme.TerminalTheme
 import me.nick.squeezessh.ui.theme.toColorScheme
 
@@ -17,6 +19,8 @@ class SessionEntry(
     var theme: TerminalTheme,
     /** True when the host chose its own theme, so global theme changes leave this session alone. */
     val themeOverridden: Boolean = false,
+    /** Port forwards running over this session's connection, if it has any. */
+    val forwards: ForwardController? = null,
 ) {
     val startedAt: Long = System.currentTimeMillis()
 
@@ -62,6 +66,7 @@ class SessionManager {
             session = session,
             theme = theme,
             themeOverridden = themeOverridden,
+            forwards = (backend as? SshShellBackend)?.forwards,
         )
         entries += entry
         refresh()
