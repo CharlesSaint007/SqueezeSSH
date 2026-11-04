@@ -30,6 +30,10 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 
 - **Shortcuts:** long-press the app icon for your most recently used hosts, or pin any host to the home screen
   from its settings (the *add to home screen* icon). Either one connects straight away.
+- **Biometric lock:** *Settings → Security* can require your fingerprint, face or screen lock to open the app (and
+  again after it's been in the background for a minute); the app is hidden from screenshots and the recent-apps
+  view while that is on. Each host's settings have *Require fingerprint to connect*, asked every time before
+  connecting. Both are off by default. If the phone has no screen lock, neither can be turned on.
 - **Known hosts:** host-key fingerprints you've accepted are remembered, and a changed key is flagged loudly.
   *Settings → Clear known hosts* forgets them all, so each host asks to be trusted again on its next connection.
 - **Host menu:** long-press a host for *Edit*, *Copy as new config* (opens a new host pre-filled with this one's

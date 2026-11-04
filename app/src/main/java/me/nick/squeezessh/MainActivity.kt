@@ -4,13 +4,18 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
+import android.view.WindowManager
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.withResumed
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -29,6 +34,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import me.nick.squeezessh.data.ForwardEntity
 import me.nick.squeezessh.data.HostEntity
+import me.nick.squeezessh.security.AppLock
+import me.nick.squeezessh.security.AuthResult
+import me.nick.squeezessh.security.Biometrics
 import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.terminal.TerminalScreen
@@ -42,17 +50,39 @@ import me.nick.squeezessh.ui.hosts.HostsScreen
 import me.nick.squeezessh.ui.hosts.QuickConnect
 import me.nick.squeezessh.ui.identities.IdentitiesScreen
 import me.nick.squeezessh.ui.keys.KeysScreen
+import me.nick.squeezessh.ui.security.LockScreen
 import me.nick.squeezessh.ui.snippets.SnippetsScreen
 import me.nick.squeezessh.ui.theme.BuiltInThemes
 import me.nick.squeezessh.ui.theme.SqueezeTheme
 import me.nick.squeezessh.ui.theme.ThemeEditorScreen
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     /** A session a notification asked to open; consumed by the nav graph. */
     private val pendingSessionId = MutableStateFlow<String?>(null)
 
     /** A host a launcher shortcut asked to connect to; consumed by the nav graph. */
     private val pendingHostId = MutableStateFlow<String?>(null)
+
+    /** Whether the app lock has been opened since it last locked. Only matters when the lock is turned on. */
+    private var unlocked by mutableStateOf(false)
+
+    /** Mirrors the setting so the lifecycle callbacks (outside Compose) can see it. */
+    @Volatile
+    private var appLockEnabled = false
+    private var backgroundedAt: Long? = null
+
+    override fun onStop() {
+        super.onStop()
+        backgroundedAt = SystemClock.elapsedRealtime()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Locks again once the app has been out of sight for a while, not on every short trip away (the
+        // fingerprint prompt itself can pause the activity on older Android versions).
+        if (appLockEnabled && AppLock.shouldRelock(backgroundedAt, SystemClock.elapsedRealtime())) unlocked = false
+        backgroundedAt = null
+    }
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         // Sessions run either way; without the permission they just have no per-session notifications.
@@ -69,7 +99,34 @@ class MainActivity : ComponentActivity() {
         val bitwarden = app.bitwarden
 
         setContent {
-            val settings by repo.settings.collectAsStateWithLifecycle(initialValue = Settings())
+            val loadedSettings by repo.settings.collectAsStateWithLifecycle<Settings?>(initialValue = null)
+            val settings = loadedSettings ?: Settings()
+            SideEffect { appLockEnabled = loadedSettings?.requireBiometricToOpen == true }
+            // With the app lock on, keep the app out of screenshots and the recent-apps thumbnail.
+            SideEffect {
+                if (appLockEnabled) {
+                    window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+            // Until the settings have loaded we can't know whether to lock, so show nothing rather than flash the app.
+            val locked = loadedSettings == null || (loadedSettings?.requireBiometricToOpen == true && !unlocked)
+            var lockMessage by remember { mutableStateOf<String?>(null) }
+            var lockUnavailable by remember { mutableStateOf(false) }
+            var unlockRequest by remember { mutableIntStateOf(0) }
+            LaunchedEffect(locked, unlockRequest) {
+                if (!locked || loadedSettings == null) return@LaunchedEffect
+                // Wait until the app is in front: asked for earlier, the system prompt is dropped.
+                lifecycle.withResumed { }
+                lockUnavailable = false
+                when (val r = Biometrics.authenticate(this@MainActivity, "Unlock SqueezeSSH")) {
+                    AuthResult.Success -> { unlocked = true; lockMessage = null }
+                    AuthResult.Cancelled -> lockMessage = null
+                    AuthResult.Unavailable -> lockUnavailable = true
+                    is AuthResult.Failed -> lockMessage = r.message
+                }
+            }
             val scope = rememberCoroutineScope()
             val openSessions by sessions.sessions.collectAsStateWithLifecycle()
             val hosts by vault.hosts.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -185,6 +242,7 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     null
                                 },
+                                biometricAvailable = Biometrics.isAvailable(this@MainActivity),
                                 onBack = { nav.back() },
                             )
                         }
@@ -198,6 +256,16 @@ class MainActivity : ComponentActivity() {
                             ConnectScreen(
                                 host = h,
                                 connections = app.connections,
+                                authenticate = {
+                                    when (val r = Biometrics.authenticate(this@MainActivity, "Connect to ${h.nickname}")) {
+                                        AuthResult.Success -> null
+                                        AuthResult.Cancelled -> "Authentication cancelled."
+                                        AuthResult.Unavailable ->
+                                            "This host requires a fingerprint or screen lock, but this phone has none set up. " +
+                                                "Set one up, or turn the requirement off in the host's settings."
+                                        is AuthResult.Failed -> r.message
+                                    }
+                                },
                                 onConnected = { backend ->
                                     val override = settings.themes.find(h.themeId)
                                     val entry = sessions.open(
@@ -320,6 +388,20 @@ class MainActivity : ComponentActivity() {
                             onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
                             onVolumeKeysFontSize = { on -> scope.launch { repo.setVolumeKeysFontSize(on) } },
                             onAutoReconnect = { on -> scope.launch { repo.setAutoReconnect(on) } },
+                            biometricAvailable = Biometrics.isAvailable(this@MainActivity),
+                            onRequireBiometricToOpen = { on ->
+                                scope.launch {
+                                    if (!on) {
+                                        repo.setRequireBiometricToOpen(false)
+                                        return@launch
+                                    }
+                                    // Prove it works before turning it on, so the app can't lock its owner out.
+                                    when (val r = Biometrics.authenticate(this@MainActivity, "Turn on app lock")) {
+                                        AuthResult.Success -> { unlocked = true; repo.setRequireBiometricToOpen(true) }
+                                        else -> if (r is AuthResult.Failed) android.widget.Toast.makeText(this@MainActivity, r.message, android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
                             onBitwarden = { nav.navigate("bitwarden") },
                             onBackup = { nav.navigate("backup") },
                             knownHostCount = knownHostCount,
@@ -328,6 +410,16 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.back() },
                         )
                     }
+                }
+
+                // Drawn over everything, so nothing of the app (including a running session) shows while locked.
+                if (locked) {
+                    LockScreen(
+                        message = lockMessage,
+                        unavailable = lockUnavailable,
+                        onUnlock = { unlockRequest++ },
+                        onTurnOffLock = { scope.launch { repo.setRequireBiometricToOpen(false) } },
+                    )
                 }
             }
         }

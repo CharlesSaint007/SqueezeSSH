@@ -58,6 +58,7 @@ data class HostBackup(
     val agentForwarding: Boolean = false,
     val compression: Boolean = false,
     val startupSnippetId: String? = null,
+    val requireBiometric: Boolean = false,
     val lastConnectedAt: Long? = null,
     val connectCount: Int = 0,
     val createdAt: Long = 0,

@@ -57,6 +57,8 @@ fun HostEditScreen(
     onManageIdentities: () -> Unit,
     /** Pin the saved host to the home screen; null when the launcher can't pin shortcuts. */
     onPinShortcut: ((HostEntity) -> Unit)?,
+    /** Whether the phone has a fingerprint, face or screen lock to ask for. */
+    biometricAvailable: Boolean,
     onBack: () -> Unit,
 ) {
     // Editing starts from the saved host; a copy starts from the template, as an unsaved new host.
@@ -74,6 +76,7 @@ fun HostEditScreen(
     var keepalive by remember { mutableStateOf((source?.keepaliveSeconds ?: 30).toString()) }
     var agentForwarding by remember { mutableStateOf(source?.agentForwarding ?: false) }
     var startupSnippetId by remember { mutableStateOf(source?.startupSnippetId) }
+    var requireBiometric by remember { mutableStateOf(source?.requireBiometric ?: false) }
     var confirmDelete by remember { mutableStateOf(false) }
     // A new host gets its ID up front so forwards added before the first save can point at it.
     val hostId = remember { existing?.id ?: UUID.randomUUID().toString() }
@@ -204,6 +207,26 @@ fun HostEditScreen(
             ForwardsEditor(forwards = forwards, hostId = hostId, onChange = { forwards = it })
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
+                    Text("Require fingerprint to connect", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (biometricAvailable) {
+                            "Asks for your fingerprint, face or screen lock each time before connecting to this host."
+                        } else {
+                            "Set up a fingerprint or screen lock in your phone's settings to use this."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // Can always be switched off, even when the phone has lost its lock; only turning it on needs one.
+                Switch(
+                    checked = requireBiometric,
+                    onCheckedChange = { requireBiometric = it },
+                    enabled = biometricAvailable || requireBiometric,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
                     Text("Agent forwarding", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Only enable for servers you trust.",
@@ -231,6 +254,7 @@ fun HostEditScreen(
                             keepaliveSeconds = keepalive.toIntOrNull() ?: 30,
                             agentForwarding = agentForwarding,
                             startupSnippetId = startupSnippetId,
+                            requireBiometric = requireBiometric,
                         ),
                         forwards,
                     )
