@@ -1,6 +1,7 @@
 package me.nick.squeezessh
 
 import android.app.Application
+import me.nick.squeezessh.backup.BackupService
 import me.nick.squeezessh.bitwarden.BitwardenSync
 import me.nick.squeezessh.crypto.SecretStore
 import me.nick.squeezessh.crypto.SshCrypto
@@ -20,6 +21,7 @@ class SqueezeApp : Application() {
     private val secretStore by lazy { SecretStore(this) }
     val vault by lazy { Vault(database, secretStore) }
     val bitwarden by lazy { BitwardenSync(vault, secretStore) }
+    val backup by lazy { BackupService(database, secretStore, settingsRepository, BuildConfig.VERSION_NAME) }
     val connections by lazy { ConnectionService(vault, SshConnector(HostKeyVerifier(database.knownHosts()))) }
 
     override fun onCreate() {

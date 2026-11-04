@@ -57,6 +57,7 @@ fun SettingsScreen(
     onKeepAwake: (Boolean) -> Unit,
     onVolumeKeysFontSize: (Boolean) -> Unit,
     onBitwarden: () -> Unit,
+    onBackup: () -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -81,6 +82,18 @@ fun SettingsScreen(
                         Text("Bitwarden / Vaultwarden", style = MaterialTheme.typography.bodyLarge)
                         Text(
                             "Sync SSH keys with your vault",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth().clickable(onClick = onBackup)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Backup & restore", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Export hosts and settings to a file, or import them on a new phone",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

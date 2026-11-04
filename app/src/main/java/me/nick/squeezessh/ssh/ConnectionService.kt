@@ -65,6 +65,12 @@ class ConnectionService(private val vault: Vault, private val connector: SshConn
         val username = usernameOverride ?: identity?.username ?: host.username
         if (username.isNullOrBlank()) throw HostConfigException("\"${host.nickname}\" has no username or identity")
         val key = identity?.keyId?.let { vault.key(it) }
+        if (key != null && !key.hasPrivateKey) {
+            throw HostConfigException(
+                "The key \"${key.name}\" was restored without its private half. Sign in to Bitwarden sync, " +
+                    "or import a backup that includes secrets.",
+            )
+        }
         return SshTarget(
             host = host.address,
             port = host.port,

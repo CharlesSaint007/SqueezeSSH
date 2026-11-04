@@ -87,6 +87,17 @@ class SettingsRepository(context: Context) {
     suspend fun setKeepAwake(enabled: Boolean) = store.edit { it[KEEP_AWAKE] = enabled }
     suspend fun setVolumeKeysFontSize(enabled: Boolean) = store.edit { it[VOLUME_KEYS_FONT] = enabled }
 
+    /** Replace every setting at once (restoring a backup). */
+    suspend fun replace(s: Settings) = store.edit {
+        it[TERMINAL_THEME] = s.terminalThemeId
+        it[UI_THEME_MODE] = s.uiThemeMode.name
+        it[UI_THEME] = s.uiThemeId
+        it[FONT_SIZE] = s.fontSizeSp.coerceIn(Settings.MIN_FONT_SIZE_SP, Settings.MAX_FONT_SIZE_SP)
+        it[EXIT_BEHAVIOR] = s.exitBehavior.name
+        it[KEEP_AWAKE] = s.keepAwake
+        it[VOLUME_KEYS_FONT] = s.volumeKeysFontSize
+    }
+
     private companion object {
         val TERMINAL_THEME = stringPreferencesKey("terminal_theme")
         val UI_THEME_MODE = stringPreferencesKey("ui_theme_mode")

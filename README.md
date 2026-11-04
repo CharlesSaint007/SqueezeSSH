@@ -23,7 +23,7 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 4. ✅ Background sessions and notifications
 5. ✅ Port forwarding + snippets
 6. ✅ Bitwarden / Vaultwarden sync
-7. Export / import
+7. ✅ Export / import
 8. Polish, then the first `v0.1.0` release
 
 ## Port forwarding and snippets
@@ -39,6 +39,18 @@ session with **FN → PORTS**, which also shows each forward's status and errors
 
 **Snippets** (*⋮ → Snippets*) are saved commands. In a session, **FN → SNIP** types one in. A host can also run
 a *startup snippet* when it connects.
+
+## Backup and moving to a new phone
+
+**Settings → Backup & restore** exports hosts, identities, keys (public halves and Bitwarden links), port
+forwards, snippets, known hosts and settings to a `.squeezessh.json` file through the system file picker.
+
+- *Include passwords and private keys* adds them to the file, encrypted with a passphrase you choose
+  (Argon2id + AES-256-GCM). Without it the file holds no secrets at all.
+- **Import** offers *Merge* (add to what's here; items with the same ID are updated) or *Replace* (delete
+  everything first).
+- **New phone:** install, import the backup, then sign in to Bitwarden sync. Keys restored without their
+  private half are filled in from the vault on the first sync. Until then, connecting with one says so.
 
 ## Bitwarden / Vaultwarden sync
 
