@@ -1,5 +1,6 @@
 package me.nick.squeezessh.terminal
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -8,39 +9,40 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -51,13 +53,14 @@ import me.nick.squeezessh.session.SessionEntry
 import me.nick.squeezessh.session.SessionManager
 import me.nick.squeezessh.settings.ExitBehavior
 import me.nick.squeezessh.settings.Settings
+import me.nick.squeezessh.ui.theme.ColorMath
 
 /** Holds the view and the sticky-modifier state so the view clients and the extra-keys row share them. */
 private class TerminalState {
     var view: TerminalView? = null
     var ctrl by mutableStateOf(false)
     var alt by mutableStateOf(false)
-    var title by mutableStateOf<String?>(null)
+    var functionKeys by mutableStateOf(false)
 
     fun releaseModifiers() {
         ctrl = false
@@ -65,13 +68,15 @@ private class TerminalState {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TerminalScreen(
     entry: SessionEntry,
     sessionManager: SessionManager,
     fontSizeSp: Int,
     onFontSizeChange: (Int) -> Unit,
+    /** Volume up/down change the font size while this screen is shown. */
+    volumeKeysFontSize: Boolean,
     exitBehavior: ExitBehavior,
     onRememberExitBehavior: (ExitBehavior) -> Unit,
     /** Leave the screen; [keepRunning] says whether the session stays open in the background. */
@@ -93,6 +98,10 @@ fun TerminalScreen(
     BackHandler(onBack = requestLeave)
     // Font size in px for the current font scale; recomputed when the configuration changes.
     val textPx = with(LocalDensity.current) { fontSizeSp.sp.roundToPx() }
+    // The view client outlives recompositions, so it reads these through state rather than capturing them.
+    val currentFontSp = rememberUpdatedState(fontSizeSp)
+    val onFontSizeChangeState = rememberUpdatedState(onFontSizeChange)
+    val volumeKeysState = rememberUpdatedState(volumeKeysFontSize)
 
     // Attach this screen to the session's events while it is shown; sessions keep running when it is not.
     DisposableEffect(entry.id) {
@@ -100,66 +109,73 @@ fun TerminalScreen(
         onDispose { sessionManager.client.delegate = null }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(state.title ?: entry.label, maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = requestLeave) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-                actions = {
-                    IconButton(onClick = { pasteClipboard(context, entry.session) }) {
-                        Icon(Icons.Filled.ContentPaste, contentDescription = "Paste")
-                    }
-                    IconButton(onClick = { state.view?.let { showKeyboard(it) } }) {
-                        Icon(Icons.Filled.Keyboard, contentDescription = "Show keyboard")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            AndroidView(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                factory = { ctx ->
-                    TerminalView(ctx, null).apply {
-                        state.view = this
-                        isFocusable = true
-                        isFocusableInTouchMode = true
-                        // setTextSize creates the renderer; setTypeface needs it to exist.
-                        setTextSize(textPx)
-                        setTypeface(loadTerminalTypeface(ctx))
-                        setTerminalViewClient(
-                            ScreenViewClient(
-                                state = state,
-                                currentFontSp = { fontSizeSp },
-                                onFontSizeChange = onFontSizeChange,
-                            ),
-                        )
-                        attachSession(entry.session)
-                        // Focus can only be taken once the view is in the window; until then Compose keeps
-                        // it on the top bar, and key presses (Enter included) go to the back button.
-                        post { requestFocus() }
-                    }
-                },
-                update = { view ->
-                    view.setTextSize(textPx)
-                    view.attachSession(entry.session)
-                    view.invalidate()
-                },
-                onRelease = { state.view = null },
-            )
-            ExtraKeysRow(
-                keys = DefaultExtraKeys,
-                ctrlActive = state.ctrl,
-                altActive = state.alt,
-                onKey = { key ->
-                    onExtraKey(key, state, entry.session)
-                    // Tapping a Compose button moves focus off the terminal; hand it back.
-                    state.view?.requestFocus()
-                },
-            )
-        }
+    val keyboardVisible = WindowInsets.isImeVisible
+    val view = LocalView.current
+    // The terminal fills the window edge to edge, so the status bar sits on the terminal background; match its
+    // icon color to that background.
+    val darkBackground = ColorMath.isDark(entry.theme.background)
+    DisposableEffect(view, darkBackground) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        controller?.isAppearanceLightStatusBars = !darkBackground
+        onDispose { if (previous != null) controller.isAppearanceLightStatusBars = previous }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color(entry.theme.background))
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .imePadding(),
+    ) {
+        AndroidView(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            factory = { ctx ->
+                TerminalView(ctx, null).apply {
+                    state.view = this
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    // setTextSize creates the renderer; setTypeface needs it to exist.
+                    setTextSize(textPx)
+                    setTypeface(loadTerminalTypeface(ctx))
+                    setTerminalViewClient(
+                        ScreenViewClient(
+                            state = state,
+                            currentFontSp = { currentFontSp.value },
+                            onFontSizeChange = { onFontSizeChangeState.value(it) },
+                            volumeKeysFontSize = { volumeKeysState.value },
+                        ),
+                    )
+                    attachSession(entry.session)
+                    // Focus can only be taken once the view is in the window; until then key presses would go
+                    // to whatever Compose focused first.
+                    post { requestFocus() }
+                }
+            },
+            update = { view ->
+                view.setTextSize(textPx)
+                view.attachSession(entry.session)
+                view.invalidate()
+            },
+            onRelease = { state.view = null },
+        )
+        ExtraKeysBar(
+            rows = if (state.functionKeys) FunctionKeys else MainKeys,
+            activeModifiers = buildSet {
+                if (state.ctrl) add(StickyModifier.Ctrl)
+                if (state.alt) add(StickyModifier.Alt)
+            },
+            keyboardVisible = keyboardVisible,
+            onKey = { key ->
+                onExtraKey(key, state, entry.session)
+                // Tapping a Compose button moves focus off the terminal; hand it back.
+                state.view?.requestFocus()
+            },
+            onToggleKeyboard = {
+                state.view?.let { if (keyboardVisible) hideKeyboard(it) else showKeyboard(it) }
+            },
+        )
     }
 
     if (askExit) {
@@ -214,6 +230,7 @@ private fun onExtraKey(key: ExtraKey, state: TerminalState, session: TerminalSes
             StickyModifier.Ctrl -> state.ctrl = !state.ctrl
             StickyModifier.Alt -> state.alt = !state.alt
         }
+        is ExtraKey.Page -> state.functionKeys = key.functionKeys
         is ExtraKey.Code -> {
             var mod = 0
             if (state.ctrl) mod = mod or KeyHandler.KEYMOD_CTRL
@@ -244,6 +261,10 @@ private fun showKeyboard(view: TerminalView) {
     view.context.getSystemService(InputMethodManager::class.java).showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
 }
 
+private fun hideKeyboard(view: TerminalView) {
+    view.context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(view.windowToken, 0)
+}
+
 private var cachedTypeface: Typeface? = null
 
 private fun loadTerminalTypeface(context: Context): Typeface =
@@ -255,10 +276,6 @@ private fun screenSessionClient(context: Context, state: TerminalState, onFinish
     object : TerminalSessionClient by NoOpSessionClient {
         override fun onTextChanged(changedSession: TerminalSession) {
             state.view?.onScreenUpdated()
-        }
-
-        override fun onTitleChanged(changedSession: TerminalSession) {
-            state.title = changedSession.title
         }
 
         override fun onSessionFinished(finishedSession: TerminalSession) {
@@ -286,14 +303,18 @@ private class ScreenViewClient(
     private val state: TerminalState,
     private val currentFontSp: () -> Int,
     private val onFontSizeChange: (Int) -> Unit,
+    private val volumeKeysFontSize: () -> Boolean,
 ) : TerminalViewClient {
+    private fun stepFont(step: Int) {
+        val next = (currentFontSp() + step).coerceIn(Settings.MIN_FONT_SIZE_SP, Settings.MAX_FONT_SIZE_SP)
+        if (next != currentFontSp()) onFontSizeChange(next)
+    }
+
     override fun onScale(scale: Float): Float {
         // TerminalView passes the cumulative gesture scale; step the font one sp per ~10% of pinch,
         // and return 1 to restart the accumulation after each step.
         if (scale < 0.9f || scale > 1.1f) {
-            val step = if (scale > 1f) 1 else -1
-            val next = (currentFontSp() + step).coerceIn(Settings.MIN_FONT_SIZE_SP, Settings.MAX_FONT_SIZE_SP)
-            if (next != currentFontSp()) onFontSizeChange(next)
+            stepFont(if (scale > 1f) 1 else -1)
             return 1f
         }
         return scale
@@ -309,8 +330,19 @@ private class ScreenViewClient(
     override fun isTerminalViewSelected() = true
     override fun copyModeChanged(copyMode: Boolean) = Unit
 
-    override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean = false
-    override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = false
+    override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
+        if (!volumeKeysFontSize()) return false
+        // Holding the key repeats, which keeps stepping the size.
+        return when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> true.also { stepFont(1) }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> true.also { stepFont(-1) }
+            else -> false
+        }
+    }
+
+    // Swallow the matching key-up too, so the system doesn't show its volume panel.
+    override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean =
+        volumeKeysFontSize() && (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
     override fun onLongPress(event: MotionEvent): Boolean = false
 
     // The sticky modifiers are consumed by the next key, so reading one also releases it.
