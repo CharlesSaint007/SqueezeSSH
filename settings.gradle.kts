@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "SqueezeSSH"
 include(":app")
+include(":terminal-emulator")
+include(":terminal-view")
