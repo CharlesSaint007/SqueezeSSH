@@ -52,9 +52,21 @@ jobs:
           cp app/build/outputs/apk/stable/release/app-stable-release.apk \
              "squeezessh-${APP_VERSION_NAME}.apk"
 
+      # Obtainium's stable channel uses its defaults (no APK filter), so a stable release must contain exactly
+      # one APK, and it must be the stable app.
+      - name: Check the release holds only the stable APK
+        run: |
+          set -- squeezessh-*.apk
+          if [ "$#" -ne 1 ] || [ "$1" != "squeezessh-${APP_VERSION_NAME}.apk" ]; then
+            echo "::error::Expected exactly squeezessh-${APP_VERSION_NAME}.apk, found: $*"
+            exit 1
+          fi
+
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           name: SqueezeSSH ${{ github.ref_name }}
           generate_release_notes: true
-          files: squeezessh-*.apk
+          prerelease: false
+          make_latest: true
+          files: squeezessh-${{ env.APP_VERSION_NAME }}.apk

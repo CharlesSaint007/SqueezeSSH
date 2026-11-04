@@ -54,7 +54,9 @@ jobs:
           tag_name: dev-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           name: Dev build ${{ github.run_number }}
+          # Never "latest": stable Obtainium installs use the defaults and must only ever see stable releases.
           prerelease: true
+          make_latest: false
           body: |
             Automated dev build from `${{ github.sha }}`.
             Installs as **SqueezeSSH Dev** (`me.nick.squeezessh.dev`), side by side with stable.
