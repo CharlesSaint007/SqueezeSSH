@@ -1,5 +1,6 @@
 package me.nick.squeezessh.ssh
 
+import android.util.Log
 import com.termux.terminal.StreamBackend
 import org.apache.sshd.client.channel.ChannelShell
 import org.apache.sshd.client.channel.ClientChannelEvent
@@ -10,6 +11,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.time.Duration
 import java.util.EnumSet
+import java.util.concurrent.Executors
 
 /**
  * A terminal backend running an interactive shell on an authenticated SSH session. Owns the session (and any
@@ -25,6 +27,8 @@ class SshShellBackend(
 
     @Volatile
     private var channel: ChannelShell? = null
+
+    private val resizeExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "SshShellBackend-resize") }
 
     override fun openInput(columns: Int, rows: Int): InputStream {
         val pty = PtyChannelConfiguration().apply {
@@ -47,15 +51,24 @@ class SshShellBackend(
             it.waitFor(EnumSet.of(ClientChannelEvent.EXIT_STATUS), Duration.ofSeconds(1))
             it.exitStatus
         }
+        Log.i(TAG, "Shell ended (exit status $status, session open: ${session.isOpen})")
         return if (status != null && status != 0) "Connection closed (exit status $status)" else "Connection closed"
     }
 
+    /**
+     * Called on the main thread whenever the view's size changes (keyboard shown, rotation, reopening the screen).
+     * Sending the window-change request writes to the socket, which Android forbids on the main thread; MINA
+     * treats the resulting NetworkOnMainThreadException as fatal and drops the whole connection. So the write
+     * goes to a single background thread, which also keeps rapid resizes in order.
+     */
     override fun resize(columns: Int, rows: Int, cellWidthPixels: Int, cellHeightPixels: Int) {
         val shell = channel ?: return
-        try {
-            shell.sendWindowChange(columns, rows, columns * cellWidthPixels, rows * cellHeightPixels)
-        } catch (_: IOException) {
-            // The channel is going away; the reader thread will report it.
+        resizeExecutor.execute {
+            try {
+                shell.sendWindowChange(columns, rows, columns * cellWidthPixels, rows * cellHeightPixels)
+            } catch (_: IOException) {
+                // The channel is going away; the reader thread will report it.
+            }
         }
     }
 
@@ -65,10 +78,15 @@ class SshShellBackend(
     }
 
     override fun close() {
+        resizeExecutor.shutdownNow()
         channel?.close(true)
         session.close(true)
         upstream.forEach { it.close(true) }
     }
 
     val isConnected: Boolean get() = session.isOpen
+
+    private companion object {
+        const val TAG = "SshShellBackend"
+    }
 }

@@ -29,6 +29,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import me.nick.squeezessh.settings.ExitBehavior
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.settings.UiThemeMode
 import me.nick.squeezessh.ui.theme.BuiltInThemes
@@ -51,6 +53,8 @@ fun SettingsScreen(
     onUiThemeMode: (UiThemeMode) -> Unit,
     onUiTheme: (String) -> Unit,
     onFontSize: (Int) -> Unit,
+    onExitBehavior: (ExitBehavior) -> Unit,
+    onKeepAwake: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -111,6 +115,43 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            item {
+                SectionTitle("Sessions")
+                Text("When leaving a running session", style = MaterialTheme.typography.bodyMedium)
+            }
+            items(ExitBehavior.entries, key = { "exit-" + it.name }) { behavior ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onExitBehavior(behavior) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = settings.exitBehavior == behavior, onClick = { onExitBehavior(behavior) })
+                    Text(
+                        when (behavior) {
+                            ExitBehavior.Ask -> "Ask each time"
+                            ExitBehavior.KeepRunning -> "Keep running in the background"
+                            ExitBehavior.Disconnect -> "Disconnect"
+                        },
+                    )
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clickable { onKeepAwake(!settings.keepAwake) }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Keep device awake", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Holds the CPU and Wi-Fi awake while sessions run, so connections survive the screen " +
+                                "being off. Uses more battery.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = settings.keepAwake, onCheckedChange = onKeepAwake)
+                }
             }
         }
     }

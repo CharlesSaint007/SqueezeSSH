@@ -7,7 +7,10 @@ import android.graphics.Typeface
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -16,11 +19,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -28,8 +34,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
@@ -39,6 +49,7 @@ import com.termux.view.TerminalViewClient
 import me.nick.squeezessh.session.NoOpSessionClient
 import me.nick.squeezessh.session.SessionEntry
 import me.nick.squeezessh.session.SessionManager
+import me.nick.squeezessh.settings.ExitBehavior
 import me.nick.squeezessh.settings.Settings
 
 /** Holds the view and the sticky-modifier state so the view clients and the extra-keys row share them. */
@@ -61,11 +72,27 @@ fun TerminalScreen(
     sessionManager: SessionManager,
     fontSizeSp: Int,
     onFontSizeChange: (Int) -> Unit,
-    onBack: () -> Unit,
+    exitBehavior: ExitBehavior,
+    onRememberExitBehavior: (ExitBehavior) -> Unit,
+    /** Leave the screen; [keepRunning] says whether the session stays open in the background. */
+    onLeave: (keepRunning: Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val state = remember(entry.id) { TerminalState() }
-    val density = context.resources.displayMetrics.scaledDensity
+    var askExit by remember { mutableStateOf(false) }
+
+    // An ended session has nothing to keep; otherwise follow the saved preference or ask.
+    val requestLeave = {
+        when {
+            !entry.session.isRunning -> onLeave(false)
+            exitBehavior == ExitBehavior.KeepRunning -> onLeave(true)
+            exitBehavior == ExitBehavior.Disconnect -> onLeave(false)
+            else -> askExit = true
+        }
+    }
+    BackHandler(onBack = requestLeave)
+    // Font size in px for the current font scale; recomputed when the configuration changes.
+    val textPx = with(LocalDensity.current) { fontSizeSp.sp.roundToPx() }
 
     // Attach this screen to the session's events while it is shown; sessions keep running when it is not.
     DisposableEffect(entry.id) {
@@ -78,7 +105,7 @@ fun TerminalScreen(
             TopAppBar(
                 title = { Text(state.title ?: entry.label, maxLines = 1) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = requestLeave) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 },
                 actions = {
                     IconButton(onClick = { pasteClipboard(context, entry.session) }) {
@@ -100,7 +127,7 @@ fun TerminalScreen(
                         isFocusable = true
                         isFocusableInTouchMode = true
                         // setTextSize creates the renderer; setTypeface needs it to exist.
-                        setTextSize((fontSizeSp * density).toInt())
+                        setTextSize(textPx)
                         setTypeface(loadTerminalTypeface(ctx))
                         setTerminalViewClient(
                             ScreenViewClient(
@@ -116,7 +143,7 @@ fun TerminalScreen(
                     }
                 },
                 update = { view ->
-                    view.setTextSize((fontSizeSp * density).toInt())
+                    view.setTextSize(textPx)
                     view.attachSession(entry.session)
                     view.invalidate()
                 },
@@ -134,6 +161,51 @@ fun TerminalScreen(
             )
         }
     }
+
+    if (askExit) {
+        ExitDialog(
+            label = entry.label,
+            onKeep = { remember ->
+                askExit = false
+                if (remember) onRememberExitBehavior(ExitBehavior.KeepRunning)
+                onLeave(true)
+            },
+            onDisconnect = { remember ->
+                askExit = false
+                if (remember) onRememberExitBehavior(ExitBehavior.Disconnect)
+                onLeave(false)
+            },
+            onDismiss = { askExit = false },
+        )
+    }
+}
+
+@Composable
+private fun ExitDialog(
+    label: String,
+    onKeep: (remember: Boolean) -> Unit,
+    onDisconnect: (remember: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var rememberChoice by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Leave $label?") },
+        text = {
+            Column {
+                Text("Keep the session running in the background? A notification will take you back to it.")
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 12.dp).clickable { rememberChoice = !rememberChoice },
+                ) {
+                    Checkbox(checked = rememberChoice, onCheckedChange = { rememberChoice = it })
+                    Text("Remember my choice")
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onKeep(rememberChoice) }) { Text("Keep running") } },
+        dismissButton = { TextButton(onClick = { onDisconnect(rememberChoice) }) { Text("Disconnect") } },
+    )
 }
 
 private fun onExtraKey(key: ExtraKey, state: TerminalState, session: TerminalSession) {

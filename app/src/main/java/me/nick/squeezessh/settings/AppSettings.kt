@@ -3,6 +3,7 @@ package me.nick.squeezessh.settings
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -21,11 +22,22 @@ enum class UiThemeMode {
     Separate,
 }
 
+/** What leaving a running session's screen does. */
+enum class ExitBehavior {
+    /** Ask each time: keep running in the background, or disconnect. */
+    Ask,
+    KeepRunning,
+    Disconnect,
+}
+
 data class Settings(
     val terminalThemeId: String = BuiltInThemes.default.id,
     val uiThemeMode: UiThemeMode = UiThemeMode.FollowTerminal,
     val uiThemeId: String = BuiltInThemes.default.id,
     val fontSizeSp: Int = DEFAULT_FONT_SIZE_SP,
+    val exitBehavior: ExitBehavior = ExitBehavior.Ask,
+    /** Hold a partial wake lock while sessions run, so keepalives are sent with the screen off. */
+    val keepAwake: Boolean = false,
 ) {
     val terminalTheme: TerminalTheme get() = BuiltInThemes.byId(terminalThemeId)
 
@@ -55,6 +67,9 @@ class SettingsRepository(context: Context) {
                 ?: UiThemeMode.FollowTerminal,
             uiThemeId = p[UI_THEME] ?: BuiltInThemes.default.id,
             fontSizeSp = p[FONT_SIZE] ?: Settings.DEFAULT_FONT_SIZE_SP,
+            exitBehavior = p[EXIT_BEHAVIOR]?.let { runCatching { ExitBehavior.valueOf(it) }.getOrNull() }
+                ?: ExitBehavior.Ask,
+            keepAwake = p[KEEP_AWAKE] ?: false,
         )
     }
 
@@ -65,10 +80,15 @@ class SettingsRepository(context: Context) {
         it[FONT_SIZE] = sp.coerceIn(Settings.MIN_FONT_SIZE_SP, Settings.MAX_FONT_SIZE_SP)
     }
 
+    suspend fun setExitBehavior(behavior: ExitBehavior) = store.edit { it[EXIT_BEHAVIOR] = behavior.name }
+    suspend fun setKeepAwake(enabled: Boolean) = store.edit { it[KEEP_AWAKE] = enabled }
+
     private companion object {
         val TERMINAL_THEME = stringPreferencesKey("terminal_theme")
         val UI_THEME_MODE = stringPreferencesKey("ui_theme_mode")
         val UI_THEME = stringPreferencesKey("ui_theme")
         val FONT_SIZE = intPreferencesKey("font_size_sp")
+        val EXIT_BEHAVIOR = stringPreferencesKey("exit_behavior")
+        val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
     }
 }
