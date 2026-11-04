@@ -55,6 +55,7 @@ fun SettingsScreen(
     onFontSize: (Int) -> Unit,
     onExitBehavior: (ExitBehavior) -> Unit,
     onKeepAwake: (Boolean) -> Unit,
+    onVolumeKeysFontSize: (Boolean) -> Unit,
     onBitwarden: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -129,6 +130,22 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clickable { onVolumeKeysFontSize(!settings.volumeKeysFontSize) }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Volume keys change font size", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "In a terminal, volume up and down make the text bigger or smaller.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = settings.volumeKeysFontSize, onCheckedChange = onVolumeKeysFontSize)
+                }
             }
 
             item {

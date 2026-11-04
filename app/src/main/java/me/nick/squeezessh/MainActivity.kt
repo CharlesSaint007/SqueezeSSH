@@ -165,6 +165,7 @@ class MainActivity : ComponentActivity() {
                                 sessionManager = sessions,
                                 fontSizeSp = settings.fontSizeSp,
                                 onFontSizeChange = { sp -> scope.launch { repo.setFontSize(sp) } },
+                                volumeKeysFontSize = settings.volumeKeysFontSize,
                                 exitBehavior = settings.exitBehavior,
                                 onRememberExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
                                 onLeave = { keepRunning ->
@@ -206,6 +207,7 @@ class MainActivity : ComponentActivity() {
                             onFontSize = { sp -> scope.launch { repo.setFontSize(sp) } },
                             onExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
                             onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
+                            onVolumeKeysFontSize = { on -> scope.launch { repo.setVolumeKeysFontSize(on) } },
                             onBitwarden = { nav.navigate("bitwarden") },
                             onBack = { nav.back() },
                         )

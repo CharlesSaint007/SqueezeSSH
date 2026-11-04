@@ -38,6 +38,8 @@ data class Settings(
     val exitBehavior: ExitBehavior = ExitBehavior.Ask,
     /** Hold a partial wake lock while sessions run, so keepalives are sent with the screen off. */
     val keepAwake: Boolean = false,
+    /** In a terminal, the volume keys change the font size instead of the volume. */
+    val volumeKeysFontSize: Boolean = true,
 ) {
     val terminalTheme: TerminalTheme get() = BuiltInThemes.byId(terminalThemeId)
 
@@ -70,6 +72,7 @@ class SettingsRepository(context: Context) {
             exitBehavior = p[EXIT_BEHAVIOR]?.let { runCatching { ExitBehavior.valueOf(it) }.getOrNull() }
                 ?: ExitBehavior.Ask,
             keepAwake = p[KEEP_AWAKE] ?: false,
+            volumeKeysFontSize = p[VOLUME_KEYS_FONT] ?: true,
         )
     }
 
@@ -82,6 +85,7 @@ class SettingsRepository(context: Context) {
 
     suspend fun setExitBehavior(behavior: ExitBehavior) = store.edit { it[EXIT_BEHAVIOR] = behavior.name }
     suspend fun setKeepAwake(enabled: Boolean) = store.edit { it[KEEP_AWAKE] = enabled }
+    suspend fun setVolumeKeysFontSize(enabled: Boolean) = store.edit { it[VOLUME_KEYS_FONT] = enabled }
 
     private companion object {
         val TERMINAL_THEME = stringPreferencesKey("terminal_theme")
@@ -90,5 +94,6 @@ class SettingsRepository(context: Context) {
         val FONT_SIZE = intPreferencesKey("font_size_sp")
         val EXIT_BEHAVIOR = stringPreferencesKey("exit_behavior")
         val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
+        val VOLUME_KEYS_FONT = booleanPreferencesKey("volume_keys_font_size")
     }
 }
