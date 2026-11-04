@@ -30,6 +30,8 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 
 - **Shortcuts:** long-press the app icon for your most recently used hosts, or pin any host to the home screen
   from its settings (the *add to home screen* icon). Either one connects straight away.
+- **Host menu:** long-press a host for *Edit*, *Copy as new config* (opens a new host pre-filled with this one's
+  settings and port forwards, saved only if you tap Save) and *Delete*.
 - **Quick connect:** type `user@host[:port]` in the search box. The last 5 that connected are listed under
   *Recent quick connects*.
 - **Terminal:** tap the terminal to show or hide the key bar. The bar's keyboard key shows or hides the keyboard,

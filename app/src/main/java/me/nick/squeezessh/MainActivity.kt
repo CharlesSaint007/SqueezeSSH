@@ -19,9 +19,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import me.nick.squeezessh.data.ForwardEntity
@@ -132,6 +135,8 @@ class MainActivity : ComponentActivity() {
                             },
                             onAddHost = { nav.navigate("host/new") },
                             onEditHost = { host -> nav.navigate("host/${host.id}") },
+                            onCopyHost = { host -> nav.navigate("host/new?from=${host.id}") },
+                            onDeleteHost = { host -> scope.launch { vault.deleteHost(host) } },
                             onOpenSession = { id -> nav.navigate("terminal/$id") },
                             onCloseSession = { id -> sessions.close(id) },
                             onLocalShell = {
@@ -145,17 +150,28 @@ class MainActivity : ComponentActivity() {
                             onSettings = { nav.navigate("settings") },
                         )
                     }
-                    composable("host/{id}") { backStack ->
+                    composable(
+                        "host/{id}?from={from}",
+                        arguments = listOf(navArgument("from") { type = NavType.StringType; nullable = true; defaultValue = null }),
+                    ) { backStack ->
                         val id = backStack.arguments?.getString("id")
+                        // "Copy as new config": a new host pre-filled from this one.
+                        val fromId = backStack.arguments?.getString("from")
+                        val template = hosts.firstOrNull { it.id == fromId }
                         val existing = hosts.firstOrNull { it.id == id }
                         // Wait for the hosts list before showing an edit form, so it isn't filled in empty.
-                        val forwards by produceState<List<ForwardEntity>?>(null, id) {
-                            value = if (id == null || id == "new") emptyList() else vault.forwards(id)
+                        val forwards by produceState<List<ForwardEntity>?>(null, id, fromId) {
+                            value = when {
+                                fromId != null -> vault.forwards(fromId).map { it.copy(id = UUID.randomUUID().toString()) }
+                                id == null || id == "new" -> emptyList()
+                                else -> vault.forwards(id)
+                            }
                         }
-                        if (id == "new" || existing != null) {
+                        if ((id == "new" && (fromId == null || template != null)) || existing != null) {
                             HostEditScreen(
                                 themes = settings.themes.all,
                                 existing = existing,
+                                template = template,
                                 allHosts = hosts,
                                 identities = identities,
                                 snippets = snippets,
