@@ -22,9 +22,28 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 3. ✅ SSH core: hosts, identities, key generation/import, known hosts, jump hosts
 4. ✅ Background sessions and notifications
 5. Port forwarding + snippets
-6. Bitwarden / Vaultwarden sync
+6. ✅ Bitwarden / Vaultwarden sync
 7. Export / import
 8. Polish, then the first `v0.1.0` release
+
+## Bitwarden / Vaultwarden sync
+
+SSH keys sync both ways with the **SSH Key** items in a Bitwarden (bitwarden.com or bitwarden.eu) or
+self-hosted Vaultwarden vault. Set it up from **Keys** or **Settings → Bitwarden / Vaultwarden**, using your
+personal API key (web vault: *Settings → Security → Keys → View API key*) plus your master password.
+
+- The master password is used once to unlock the vault and is never stored. The API key and the vault's
+  decryption key are kept encrypted with the device's Android Keystore.
+- Keys created or imported in the app go to a `SqueezeSSH` folder in the vault. By default only that folder is
+  brought into the app; turn off *Only the SqueezeSSH folder* to import every SSH key in the vault.
+- Renames go both ways. If a key was changed on both sides since the last sync, the newer change wins.
+- Deleting a synced key asks whether to also move the vault item to the vault's trash. If an item is deleted in
+  the vault, the app keeps its copy but stops syncing it.
+- Each key has a *Sync with Bitwarden* switch, for keys that should stay on this device only.
+- Only personal vault items are synced; organization/collection items are skipped.
+
+Debug builds may use plain `http://` to `10.0.2.2`, `127.0.0.1` or `localhost`, for testing against a local
+Vaultwarden. Release builds require HTTPS.
 
 ## Background sessions
 

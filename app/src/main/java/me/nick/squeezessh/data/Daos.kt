@@ -47,6 +47,9 @@ interface KeyDao {
     @Query("SELECT * FROM keys WHERE id = :id")
     suspend fun get(id: String): KeyEntity?
 
+    @Query("SELECT * FROM keys")
+    suspend fun getAll(): List<KeyEntity>
+
     @Query("SELECT * FROM keys WHERE fingerprint = :fingerprint LIMIT 1")
     suspend fun findByFingerprint(fingerprint: String): KeyEntity?
 

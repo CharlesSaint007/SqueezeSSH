@@ -29,6 +29,7 @@ import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.terminal.TerminalScreen
 import me.nick.squeezessh.ui.SettingsScreen
+import me.nick.squeezessh.ui.bitwarden.BitwardenScreen
 import me.nick.squeezessh.ui.connect.ConnectScreen
 import me.nick.squeezessh.ui.hosts.HostEditScreen
 import me.nick.squeezessh.ui.hosts.HostsScreen
@@ -53,6 +54,7 @@ class MainActivity : ComponentActivity() {
         val sessions = app.sessionManager
         val repo = app.settingsRepository
         val vault = app.vault
+        val bitwarden = app.bitwarden
 
         setContent {
             val settings by repo.settings.collectAsStateWithLifecycle(initialValue = Settings())
@@ -61,6 +63,7 @@ class MainActivity : ComponentActivity() {
             val hosts by vault.hosts.collectAsStateWithLifecycle(initialValue = emptyList())
             val identities by vault.identities.collectAsStateWithLifecycle(initialValue = emptyList())
             val keys by vault.keys.collectAsStateWithLifecycle(initialValue = emptyList())
+            val syncStatus by bitwarden.status.collectAsStateWithLifecycle()
 
             // A quick-connect target isn't saved, so it is handed to the connect screen in memory.
             var quickHost by remember { mutableStateOf<HostEntity?>(null) }
@@ -182,7 +185,17 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("keys") {
-                        KeysScreen(keys = keys, vault = vault, onBack = { nav.back() })
+                        KeysScreen(
+                            keys = keys,
+                            vault = vault,
+                            bitwarden = bitwarden,
+                            syncStatus = syncStatus,
+                            onOpenBitwarden = { nav.navigate("bitwarden") },
+                            onBack = { nav.back() },
+                        )
+                    }
+                    composable("bitwarden") {
+                        BitwardenScreen(sync = bitwarden, status = syncStatus, onBack = { nav.back() })
                     }
                     composable("settings") {
                         SettingsScreen(
@@ -193,6 +206,7 @@ class MainActivity : ComponentActivity() {
                             onFontSize = { sp -> scope.launch { repo.setFontSize(sp) } },
                             onExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
                             onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
+                            onBitwarden = { nav.navigate("bitwarden") },
                             onBack = { nav.back() },
                         )
                     }
