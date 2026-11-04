@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddToHomeScreen
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -37,11 +38,12 @@ import me.nick.squeezessh.data.IdentityEntity
 import me.nick.squeezessh.data.SnippetEntity
 import me.nick.squeezessh.ui.common.BackTopBar
 import me.nick.squeezessh.ui.common.PickerField
-import me.nick.squeezessh.ui.theme.BuiltInThemes
+import me.nick.squeezessh.ui.theme.TerminalTheme
 import java.util.UUID
 
 @Composable
 fun HostEditScreen(
+    themes: List<TerminalTheme>,
     existing: HostEntity?,
     allHosts: List<HostEntity>,
     identities: List<IdentityEntity>,
@@ -51,6 +53,8 @@ fun HostEditScreen(
     onSave: (HostEntity, List<ForwardEntity>) -> Unit,
     onDelete: (HostEntity) -> Unit,
     onManageIdentities: () -> Unit,
+    /** Pin the saved host to the home screen; null when the launcher can't pin shortcuts. */
+    onPinShortcut: ((HostEntity) -> Unit)?,
     onBack: () -> Unit,
 ) {
     var nickname by remember { mutableStateOf(existing?.nickname.orEmpty()) }
@@ -77,6 +81,11 @@ fun HostEditScreen(
     Scaffold(
         topBar = {
             BackTopBar(if (existing == null) "New host" else "Edit host", onBack) {
+                if (existing != null && onPinShortcut != null) {
+                    IconButton(onClick = { onPinShortcut(existing) }) {
+                        Icon(Icons.Filled.AddToHomeScreen, contentDescription = "Add to home screen")
+                    }
+                }
                 if (existing != null) {
                     IconButton(onClick = { confirmDelete = true }) {
                         Icon(Icons.Filled.Delete, contentDescription = "Delete host")
@@ -162,8 +171,8 @@ fun HostEditScreen(
             )
             PickerField(
                 label = "Terminal theme",
-                selected = BuiltInThemes.all.firstOrNull { it.id == themeId },
-                options = BuiltInThemes.all,
+                selected = themes.firstOrNull { it.id == themeId },
+                options = themes,
                 optionLabel = { it.name },
                 noneLabel = "Use global theme",
                 onSelect = { themeId = it?.id },

@@ -17,6 +17,8 @@ import me.nick.squeezessh.ui.theme.toColorScheme
 class SessionEntry(
     val id: String,
     val label: String,
+    /** The saved host this session connected to; null for the local shell and one-off quick connects. */
+    val hostId: String? = null,
     val session: TerminalSession,
     /** The theme this session uses: the host's override, or the global theme. */
     var theme: TerminalTheme,
@@ -25,6 +27,10 @@ class SessionEntry(
     /** Port forwards running over this session's connection, if it has any. */
     val forwards: ForwardController? = null,
 ) {
+    /** The connection dropped (network gone, server went away) rather than the shell exiting. */
+    val droppedUnexpectedly: Boolean
+        get() = !session.isRunning && (session.backend as? SshShellBackend)?.droppedUnexpectedly == true
+
     val startedAt: Long = System.currentTimeMillis()
 
     /** Whether the key bar is shown; tapping the terminal toggles it, and each session remembers its own. */
@@ -64,11 +70,18 @@ class SessionManager {
     fun openLocalShell(theme: TerminalTheme): SessionEntry = open("Local shell", LocalShell.backend(), theme)
 
     /** Open a terminal on an already-connected backend, e.g. an [me.nick.squeezessh.ssh.SshShellBackend]. */
-    fun open(label: String, backend: TerminalBackend, theme: TerminalTheme, themeOverridden: Boolean = false): SessionEntry {
+    fun open(
+        label: String,
+        backend: TerminalBackend,
+        theme: TerminalTheme,
+        themeOverridden: Boolean = false,
+        hostId: String? = null,
+    ): SessionEntry {
         val session = TerminalSession(backend, TRANSCRIPT_ROWS, theme.toColorScheme(), client)
         val entry = SessionEntry(
             id = session.mHandle,
             label = label,
+            hostId = hostId,
             session = session,
             theme = theme,
             themeOverridden = themeOverridden,

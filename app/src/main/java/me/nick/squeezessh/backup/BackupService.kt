@@ -17,6 +17,7 @@ import me.nick.squeezessh.settings.ExitBehavior
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.settings.SettingsRepository
 import me.nick.squeezessh.settings.UiThemeMode
+import me.nick.squeezessh.ui.theme.CustomThemeJson
 
 enum class ImportMode {
     /** Add what's in the file; items already here (same ID) are updated from the file, everything else is kept. */
@@ -73,6 +74,7 @@ class BackupService(
                 knownHosts = db.knownHosts().getAll().map { KnownHostBackup(it.hostPort, it.keyType, it.fingerprint, it.publicKey, it.addedAt) },
                 settings = SettingsBackup(
                     s.terminalThemeId, s.uiThemeMode.name, s.uiThemeId, s.fontSizeSp, s.exitBehavior.name, s.keepAwake, s.volumeKeysFontSize,
+                    s.autoReconnect, s.customThemes.map(CustomThemeJson::of),
                 ),
                 secrets = sealed,
             ),
@@ -236,4 +238,10 @@ internal fun SettingsBackup.toSettings(current: Settings) = Settings(
     exitBehavior = exitBehavior?.let { runCatching { ExitBehavior.valueOf(it) }.getOrNull() } ?: current.exitBehavior,
     keepAwake = keepAwake ?: current.keepAwake,
     volumeKeysFontSize = volumeKeysFontSize ?: current.volumeKeysFontSize,
+    autoReconnect = autoReconnect ?: current.autoReconnect,
+    recentQuickConnects = current.recentQuickConnects,
+    // A merge keeps this phone's own themes alongside the file's; same ID means the file's copy wins.
+    customThemes = customThemes?.mapNotNull { it.toTheme() }
+        ?.let { incoming -> incoming + current.customThemes.filter { c -> incoming.none { it.id == c.id } } }
+        ?: current.customThemes,
 )

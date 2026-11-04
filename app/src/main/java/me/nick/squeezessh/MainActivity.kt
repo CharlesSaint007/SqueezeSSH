@@ -29,21 +29,27 @@ import me.nick.squeezessh.data.HostEntity
 import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.terminal.TerminalScreen
+import me.nick.squeezessh.ui.HostShortcuts
 import me.nick.squeezessh.ui.SettingsScreen
 import me.nick.squeezessh.ui.backup.BackupScreen
 import me.nick.squeezessh.ui.bitwarden.BitwardenScreen
 import me.nick.squeezessh.ui.connect.ConnectScreen
 import me.nick.squeezessh.ui.hosts.HostEditScreen
 import me.nick.squeezessh.ui.hosts.HostsScreen
+import me.nick.squeezessh.ui.hosts.QuickConnect
 import me.nick.squeezessh.ui.identities.IdentitiesScreen
 import me.nick.squeezessh.ui.keys.KeysScreen
 import me.nick.squeezessh.ui.snippets.SnippetsScreen
 import me.nick.squeezessh.ui.theme.BuiltInThemes
 import me.nick.squeezessh.ui.theme.SqueezeTheme
+import me.nick.squeezessh.ui.theme.ThemeEditorScreen
 
 class MainActivity : ComponentActivity() {
     /** A session a notification asked to open; consumed by the nav graph. */
     private val pendingSessionId = MutableStateFlow<String?>(null)
+
+    /** A host a launcher shortcut asked to connect to; consumed by the nav graph. */
+    private val pendingHostId = MutableStateFlow<String?>(null)
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         // Sessions run either way; without the permission they just have no per-session notifications.
@@ -73,7 +79,8 @@ class MainActivity : ComponentActivity() {
             var quickHost by remember { mutableStateOf<HostEntity?>(null) }
 
             // Open sessions follow the global terminal theme unless their host overrides it.
-            LaunchedEffect(settings.terminalThemeId) { sessions.applyTheme(settings.terminalTheme) }
+            // Keyed on the theme itself, so editing the current custom theme's colors updates sessions too.
+            LaunchedEffect(settings.terminalTheme) { sessions.applyTheme(settings.terminalTheme) }
 
             SqueezeTheme(settings.uiTheme) {
                 val nav = rememberNavController()
@@ -88,12 +95,30 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                val pendingHost by pendingHostId.collectAsStateWithLifecycle()
+                LaunchedEffect(pendingHost) {
+                    val id = pendingHost ?: return@LaunchedEffect
+                    // Look the host up before clearing the request: clearing it restarts this effect, which
+                    // would cancel the lookup half way.
+                    val exists = vault.host(id) != null
+                    pendingHostId.value = null
+                    if (exists) {
+                        nav.navigate("connect/$id") {
+                            popUpTo("hosts")
+                            launchSingleTop = true
+                        }
+                    }
+                }
+                // Keep the launcher's recent-host shortcuts in step with the host list.
+                LaunchedEffect(hosts) { HostShortcuts.update(this@MainActivity, hosts) }
                 NavHost(navController = nav, startDestination = "hosts") {
                     composable("hosts") {
                         HostsScreen(
                             hosts = hosts,
                             identities = identities,
                             sessions = openSessions,
+                            recentQuick = settings.recentQuickConnects,
+                            onForgetQuick = { t -> scope.launch { repo.forgetQuickConnect(t) } },
                             onConnect = { host -> nav.navigate("connect/${host.id}") },
                             onQuickConnect = { q ->
                                 quickHost = HostEntity(
@@ -129,6 +154,7 @@ class MainActivity : ComponentActivity() {
                         }
                         if (id == "new" || existing != null) {
                             HostEditScreen(
+                                themes = settings.themes.all,
                                 existing = existing,
                                 allHosts = hosts,
                                 identities = identities,
@@ -137,6 +163,11 @@ class MainActivity : ComponentActivity() {
                                 onSave = { host, fwds -> scope.launch { vault.saveHost(host, fwds) }; nav.back() },
                                 onDelete = { host -> scope.launch { vault.deleteHost(host) }; nav.back() },
                                 onManageIdentities = { nav.navigate("identities") },
+                                onPinShortcut = if (HostShortcuts.canPin(this@MainActivity)) {
+                                    { host -> HostShortcuts.pin(this@MainActivity, host) }
+                                } else {
+                                    null
+                                },
                                 onBack = { nav.back() },
                             )
                         }
@@ -151,14 +182,21 @@ class MainActivity : ComponentActivity() {
                                 host = h,
                                 connections = app.connections,
                                 onConnected = { backend ->
-                                    val override = h.themeId?.let(BuiltInThemes::byId)
+                                    val override = settings.themes.find(h.themeId)
                                     val entry = sessions.open(
                                         label = h.nickname,
                                         backend = backend,
                                         theme = override ?: settings.terminalTheme,
                                         themeOverridden = override != null,
+                                        hostId = h.id.takeIf { it != QUICK_ID },
                                     )
                                     onSessionStarted()
+                                    if (h.id != QUICK_ID) HostShortcuts.reportUsed(this@MainActivity, h.id)
+                                    // Only targets that actually connected go into the history, not typos.
+                                    if (h.id == QUICK_ID) {
+                                        val target = QuickConnect(h.username, h.address, h.port).format()
+                                        scope.launch { repo.rememberQuickConnect(target) }
+                                    }
                                     nav.navigate("terminal/${entry.id}") { popUpTo("hosts") }
                                 },
                                 onBack = { nav.back() },
@@ -180,6 +218,14 @@ class MainActivity : ComponentActivity() {
                                 volumeKeysFontSize = settings.volumeKeysFontSize,
                                 snippets = snippets,
                                 onManageSnippets = { nav.navigate("snippets") },
+                                onReconnect = entry.hostId?.let { hostId ->
+                                    {
+                                        // A new connection replaces the dead session, landing back on a terminal.
+                                        sessions.close(entry.id)
+                                        nav.navigate("connect/$hostId") { popUpTo("hosts") }
+                                    }
+                                },
+                                autoReconnect = settings.autoReconnect,
                                 exitBehavior = settings.exitBehavior,
                                 onRememberExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
                                 onLeave = { keepRunning ->
@@ -219,6 +265,22 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.back() },
                         )
                     }
+                    composable("theme/{id}") { backStack ->
+                        val base = settings.themes.byId(backStack.arguments?.getString("id"))
+                        ThemeEditorScreen(
+                            base = base,
+                            onSave = { theme ->
+                                scope.launch {
+                                    repo.saveCustomTheme(theme)
+                                    // Saving makes the theme current, so the change is visible straight away.
+                                    repo.setTerminalTheme(theme.id)
+                                }
+                                nav.back()
+                            },
+                            onDelete = { theme -> scope.launch { repo.deleteCustomTheme(theme.id) }; nav.back() },
+                            onBack = { nav.back() },
+                        )
+                    }
                     composable("backup") {
                         BackupScreen(
                             backup = app.backup,
@@ -240,8 +302,10 @@ class MainActivity : ComponentActivity() {
                             onExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
                             onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
                             onVolumeKeysFontSize = { on -> scope.launch { repo.setVolumeKeysFontSize(on) } },
+                            onAutoReconnect = { on -> scope.launch { repo.setAutoReconnect(on) } },
                             onBitwarden = { nav.navigate("bitwarden") },
                             onBackup = { nav.navigate("backup") },
+                            onEditTheme = { id -> nav.navigate("theme/$id") },
                             onBack = { nav.back() },
                         )
                     }
@@ -256,8 +320,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent?.action == SessionService.ACTION_OPEN_SESSION) {
-            pendingSessionId.value = intent.getStringExtra(SessionService.EXTRA_SESSION_ID)
+        when (intent?.action) {
+            SessionService.ACTION_OPEN_SESSION -> pendingSessionId.value = intent.getStringExtra(SessionService.EXTRA_SESSION_ID)
+            HostShortcuts.ACTION_CONNECT -> pendingHostId.value = intent.getStringExtra(HostShortcuts.EXTRA_HOST_ID)
         }
     }
 

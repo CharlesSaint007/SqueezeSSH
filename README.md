@@ -24,7 +24,20 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 5. ✅ Port forwarding + snippets
 6. ✅ Bitwarden / Vaultwarden sync
 7. ✅ Export / import
-8. Polish, then the first `v0.1.0` release
+8. ✅ Polish: shortcuts, history, auto-reconnect, theme editor, then the first `v0.1.0` release
+
+## Everyday use
+
+- **Shortcuts:** long-press the app icon for your most recently used hosts, or pin any host to the home screen
+  from its settings (the *add to home screen* icon). Either one connects straight away.
+- **Quick connect:** type `user@host[:port]` in the search box. The last 5 that connected are listed under
+  *Recent quick connects*.
+- **Terminal:** tap the terminal to show or hide the key bar. The bar's keyboard key shows or hides the keyboard,
+  and **FN** switches to F1–F12, snippets (SNIP) and port forwards (PORTS). Pinch or use the volume keys to zoom.
+- **Reconnect:** if a connection drops while you're looking at it, the app reconnects after a moment, or asks
+  first if *Reconnect automatically* is off. A normal `exit` just closes the session.
+- **Themes:** in Settings, long-press any theme to edit it, or use *New theme from the current one*. Built-in
+  themes are copied first. Custom themes are included in backups.
 
 ## Port forwarding and snippets
 

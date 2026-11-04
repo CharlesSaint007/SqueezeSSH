@@ -87,6 +87,9 @@ fun TerminalScreen(
     volumeKeysFontSize: Boolean,
     snippets: List<SnippetEntity>,
     onManageSnippets: () -> Unit,
+    /** Connect this session's host again; null when it can't be (local shell, quick connect). */
+    onReconnect: (() -> Unit)?,
+    autoReconnect: Boolean,
     exitBehavior: ExitBehavior,
     onRememberExitBehavior: (ExitBehavior) -> Unit,
     /** Leave the screen; [keepRunning] says whether the session stays open in the background. */
@@ -117,8 +120,18 @@ fun TerminalScreen(
     // left to type into. If it ended on its own right after connecting, the message stays briefly visible.
     val leave = rememberUpdatedState(onLeave)
     var finished by remember(entry.id) { mutableStateOf(!entry.session.isRunning) }
+    val reconnect = rememberUpdatedState(onReconnect)
+    var dropped by remember(entry.id) { mutableStateOf(false) }
     LaunchedEffect(finished) {
-        if (finished) {
+        if (!finished) return@LaunchedEffect
+        if (entry.droppedUnexpectedly && reconnect.value != null) {
+            // The connection broke: keep the screen so the output stays readable, and reconnect from here.
+            dropped = true
+            if (autoReconnect) {
+                delay(AUTO_RECONNECT_DELAY_MS)
+                reconnect.value?.invoke()
+            }
+        } else {
             delay(FINISHED_LINGER_MS)
             leave.value(false)
         }
@@ -206,6 +219,18 @@ fun TerminalScreen(
             // The bar normally covers the navigation-bar area; without it, keep the terminal clear of it.
             Spacer(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars))
         }
+    }
+
+    if (dropped) {
+        AlertDialog(
+            onDismissRequest = { dropped = false },
+            title = { Text("Connection lost") },
+            text = {
+                Text(if (autoReconnect) "Reconnecting to ${entry.label}…" else "The connection to ${entry.label} dropped.")
+            },
+            confirmButton = { TextButton(onClick = { reconnect.value?.invoke() }) { Text("Reconnect") } },
+            dismissButton = { TextButton(onClick = { dropped = false; onLeave(false) }) { Text("Close") } },
+        )
     }
 
     when (state.panel) {
@@ -331,6 +356,9 @@ private fun hideKeyboard(view: TerminalView) {
 
 /** How long the "[Connection closed]" line stays on screen before returning to the host list. */
 private const val FINISHED_LINGER_MS = 600L
+
+/** A short pause before reconnecting by itself, so a flapping network isn't hammered. */
+private const val AUTO_RECONNECT_DELAY_MS = 2_000L
 
 private var cachedTypeface: Typeface? = null
 

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
@@ -55,6 +56,13 @@ import me.nick.squeezessh.session.SessionInfo
 
 /** A parsed `user@host:port` quick-connect string. */
 data class QuickConnect(val username: String?, val host: String, val port: Int) {
+    /** Back to the `user@host:port` form, as kept in the quick-connect history. */
+    fun format(): String = buildString {
+        if (username != null) append("$username@")
+        append(if (host.contains(':')) "[$host]" else host)
+        if (port != 22) append(":$port")
+    }
+
     companion object {
         private val PATTERN = Regex("""^(?:([^@\s]+)@)?(\[[^\]]+]|[^:\s]+)(?::(\d{1,5}))?$""")
 
@@ -75,8 +83,11 @@ fun HostsScreen(
     hosts: List<HostEntity>,
     identities: List<IdentityEntity>,
     sessions: List<SessionInfo>,
+    /** Recent quick-connect targets, newest first. */
+    recentQuick: List<String>,
     onConnect: (HostEntity) -> Unit,
     onQuickConnect: (QuickConnect) -> Unit,
+    onForgetQuick: (String) -> Unit,
     onAddHost: () -> Unit,
     onEditHost: (HostEntity) -> Unit,
     onOpenSession: (String) -> Unit,
@@ -188,6 +199,24 @@ fun HostsScreen(
                             trailingContent = {
                                 IconButton(onClick = { onCloseSession(entry.id) }) {
                                     Icon(Icons.Filled.Close, contentDescription = "Close session")
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+            val recent = recentQuick.mapNotNull { r -> QuickConnect.parse(r)?.let { r to it } }
+                .filter { (text, _) -> query.isBlank() || text.contains(query.trim(), ignoreCase = true) }
+            if (recent.isNotEmpty()) {
+                item { SectionLabel("Recent quick connects") }
+                items(recent, key = { "q-" + it.first }) { (text, target) ->
+                    Card(Modifier.fillMaxWidth().combinedClickable(onClick = { onQuickConnect(target) })) {
+                        ListItem(
+                            headlineContent = { Text(text) },
+                            leadingContent = { Icon(Icons.Filled.History, contentDescription = null) },
+                            trailingContent = {
+                                IconButton(onClick = { onForgetQuick(text) }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Remove from history")
                                 }
                             },
                         )
