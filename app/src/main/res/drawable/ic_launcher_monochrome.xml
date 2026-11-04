@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icon version (Android 13+ tints this one color): the lemon half as outlines so the segments and the
+  prompt inside stay visible. Same geometry as ic_launcher_foreground.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-20"
+        android:scaleX="1.12"
+        android:scaleY="1.12">
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="2.6"
+            android:strokeLineCap="round"
+            android:pathData="M28,51 L24.5,49.5 M28.5,58 L25,59 M80,51 L83.5,49.5 M79.5,58 L83,59" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="3"
+            android:strokeLineJoin="round"
+            android:pathData="M29,46 C28,57 34,67 44,71 C47,73 50,73 52,76 C53,77.5 55,77.5 56,76 C58,73 61,73 64,71 C74,67 80,57 79,46 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="3"
+            android:pathData="M29,46 A25,13 0 1,0 79,46 A25,13 0 1,0 29,46 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round"
+            android:pathData="M64.5,46 L75,46 M61.4,49.6 L68.8,53.3 M54,51.2 L54,56.3 M46.6,49.6 L39.2,53.3 M43.5,46 L33,46 M46.6,42.4 L39.2,38.7 M54,40.8 L54,35.7 M61.4,42.4 L68.8,38.7" />
+        <path
+            android:fillColor="#FF000000"
+            android:pathData="M76,52 C77.5,55 78.6,58 78.6,60 C78.6,61.8 77.2,63 75.6,63 C74,63 72.8,61.7 73.1,60 C73.5,57.8 74.8,55 76,52 Z" />
+    </group>
+
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M60.3,27.5 A1.7,1.7 0 1,0 63.7,27.5 A1.7,1.7 0 1,0 60.3,27.5 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M67.3,25.5 A1.2,1.2 0 1,0 69.7,25.5 A1.2,1.2 0 1,0 67.3,25.5 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M54.9,25 A1.1,1.1 0 1,0 57.1,25 A1.1,1.1 0 1,0 54.9,25 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M72.1,30 A0.9,0.9 0 1,0 73.9,30 A0.9,0.9 0 1,0 72.1,30 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M63,80 C63,80 61,82.8 61,84 C61,85.2 61.9,86 63,86 C64.1,86 65,85.2 65,84 C65,82.8 63,80 63,80 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2.3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M46.6,43.6 L50.4,46.6 L46.6,49.6 M52.6,49.6 L56.8,49.6" />
+</vector>

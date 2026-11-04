@@ -102,3 +102,45 @@ object BuiltInThemes {
 
     fun byId(id: String?): TerminalTheme = all.firstOrNull { it.id == id } ?: default
 }
+
+/** A user-made theme as stored in settings and backups: colors as `#RRGGBB` strings. */
+@kotlinx.serialization.Serializable
+data class CustomThemeJson(
+    val id: String,
+    val name: String,
+    val foreground: String,
+    val background: String,
+    val cursor: String,
+    val selection: String,
+    val ansi: List<String>,
+) {
+    fun toTheme(): TerminalTheme? = runCatching {
+        TerminalTheme(id, name, parseHex(foreground), parseHex(background), parseHex(cursor), parseHex(selection), ansi.map(::parseHex))
+    }.getOrNull()
+
+    companion object {
+        /** Custom theme IDs start with this, so they can never shadow a built-in one. */
+        const val ID_PREFIX = "custom-"
+
+        fun of(t: TerminalTheme) = CustomThemeJson(
+            t.id, t.name, toHex(t.foreground), toHex(t.background), toHex(t.cursor), toHex(t.selection), t.ansi.map(::toHex),
+        )
+
+        fun toHex(argb: Int) = "#%06X".format(argb and 0xFFFFFF)
+
+        /** `#RGB`, `#RRGGBB` or without the `#`; anything else throws. */
+        fun parseHex(text: String): Int {
+            var h = text.trim().removePrefix("#")
+            if (h.length == 3) h = h.map { "$it$it" }.joinToString("")
+            require(h.length == 6 && h.all { it.isLetterOrDigit() }) { "Not a color: $text" }
+            return (0xFF000000 or h.toLong(16)).toInt()
+        }
+    }
+}
+
+/** Built-in themes followed by the user's own; lookups fall back to the default theme. */
+class ThemeCatalog(val custom: List<TerminalTheme>) {
+    val all: List<TerminalTheme> = BuiltInThemes.all + custom
+    fun byId(id: String?): TerminalTheme = all.firstOrNull { it.id == id } ?: BuiltInThemes.default
+    fun find(id: String?): TerminalTheme? = all.firstOrNull { it.id == id }
+}

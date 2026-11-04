@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="18 18 72 72">
+  <!-- What a launcher shows: the middle 72 of the 108 adaptive canvas, masked to a circle. -->
+  <defs><clipPath id="c"><circle cx="54" cy="54" r="36"/></clipPath></defs>
+  <g clip-path="url(#c)">
+    <rect x="0" y="0" width="108" height="108" fill="#1A1B26"/>
+    <!-- Lemon half seen at an angle: the cut face is foreshortened, with the rind dome and tip below it. -->
+    <g transform="translate(54 54) rotate(-20) scale(1.12) translate(-54 -54)">
+      <!-- Squeeze marks pressing on the sides. -->
+      <path fill="none" stroke="#FFD43B" stroke-width="2.6" stroke-linecap="round" d="M28,51 L24.5,49.5 M28.5,58 L25,59 M80,51 L83.5,49.5 M79.5,58 L83,59"/>
+      <!-- Rind dome and the little tip. -->
+      <path fill="#F2B90F" stroke="#C98A0B" stroke-width="1.6" stroke-linejoin="round" d="M29,46 C28,57 34,67 44,71 C47,73 50,73 52,76 C53,77.5 55,77.5 56,76 C58,73 61,73 64,71 C74,67 80,57 79,46 Z"/>
+      <path fill="none" stroke="#FFE066" stroke-width="2" stroke-linecap="round" d="M33,56 C35,62 39,66 44,68.5"/>
+      <!-- Cut face: rind, pith, flesh. -->
+      <ellipse cx="54" cy="46" rx="25" ry="13" fill="#FFD43B" stroke="#C98A0B" stroke-width="1.6"/>
+      <ellipse cx="54" cy="46" rx="23" ry="11.6" fill="#FFF7D6"/>
+      <ellipse cx="54" cy="46" rx="21" ry="10.3" fill="#FFE36E"/>
+      <!-- Segment walls, kept off the middle to leave room for the prompt. -->
+      <path fill="none" stroke="#FFF7D6" stroke-width="1.3" stroke-linecap="round"
+        d="M64.5,46 L75,46 M61.4,49.6 L68.8,53.3 M54,51.2 L54,56.3 M46.6,49.6 L39.2,53.3 M43.5,46 L33,46 M46.6,42.4 L39.2,38.7 M54,40.8 L54,35.7 M61.4,42.4 L68.8,38.7"/>
+      <!-- A drip running down the rind from the rim. -->
+      <path fill="#FFE066" stroke="#C98A0B" stroke-width="0.9" d="M76,52 C77.5,55 78.6,58 78.6,60 C78.6,61.8 77.2,63 75.6,63 C74,63 72.8,61.7 73.1,60 C73.5,57.8 74.8,55 76,52 Z"/>
+    </g>
+    <!-- Juice spraying up off the squeezed face, and drops falling from the tip. -->
+    <circle cx="62" cy="27.5" r="1.7" fill="#FFE066"/>
+    <circle cx="68.5" cy="25.5" r="1.2" fill="#FFE066"/>
+    <circle cx="56" cy="25" r="1.1" fill="#FFE066"/>
+    <circle cx="73" cy="30" r="0.9" fill="#FFE066"/>
+    <path fill="#FFE066" stroke="#C98A0B" stroke-width="0.9" d="M63,80 C63,80 61,82.8 61,84 C61,85.2 61.9,86 63,86 C64.1,86 65,85.2 65,84 C65,82.8 63,80 63,80 Z"/>
+    <!-- Small terminal prompt in the centre of the cut face, kept upright. -->
+    <path fill="none" stroke="#1A1B26" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" d="M46.6,43.6 L50.4,46.6 L46.6,49.6 M52.6,49.6 L56.8,49.6"/>
+  </g>
+</svg>
