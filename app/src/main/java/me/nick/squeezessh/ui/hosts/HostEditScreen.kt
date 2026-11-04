@@ -45,6 +45,8 @@ import java.util.UUID
 fun HostEditScreen(
     themes: List<TerminalTheme>,
     existing: HostEntity?,
+    /** Start a new host from this one's settings ("copy as new config"); ignored when editing [existing]. */
+    template: HostEntity? = null,
     allHosts: List<HostEntity>,
     identities: List<IdentityEntity>,
     snippets: List<SnippetEntity>,
@@ -57,17 +59,21 @@ fun HostEditScreen(
     onPinShortcut: ((HostEntity) -> Unit)?,
     onBack: () -> Unit,
 ) {
-    var nickname by remember { mutableStateOf(existing?.nickname.orEmpty()) }
-    var address by remember { mutableStateOf(existing?.address.orEmpty()) }
-    var port by remember { mutableStateOf((existing?.port ?: 22).toString()) }
-    var username by remember { mutableStateOf(existing?.username.orEmpty()) }
-    var identityId by remember { mutableStateOf(existing?.identityId) }
-    var jumpHostId by remember { mutableStateOf(existing?.jumpHostId) }
-    var group by remember { mutableStateOf(existing?.group.orEmpty()) }
-    var themeId by remember { mutableStateOf(existing?.themeId) }
-    var keepalive by remember { mutableStateOf((existing?.keepaliveSeconds ?: 30).toString()) }
-    var agentForwarding by remember { mutableStateOf(existing?.agentForwarding ?: false) }
-    var startupSnippetId by remember { mutableStateOf(existing?.startupSnippetId) }
+    // Editing starts from the saved host; a copy starts from the template, as an unsaved new host.
+    val source = existing ?: template
+    var nickname by remember {
+        mutableStateOf(if (existing == null && template != null) "${template.nickname} (copy)" else existing?.nickname.orEmpty())
+    }
+    var address by remember { mutableStateOf(source?.address.orEmpty()) }
+    var port by remember { mutableStateOf((source?.port ?: 22).toString()) }
+    var username by remember { mutableStateOf(source?.username.orEmpty()) }
+    var identityId by remember { mutableStateOf(source?.identityId) }
+    var jumpHostId by remember { mutableStateOf(source?.jumpHostId) }
+    var group by remember { mutableStateOf(source?.group.orEmpty()) }
+    var themeId by remember { mutableStateOf(source?.themeId) }
+    var keepalive by remember { mutableStateOf((source?.keepaliveSeconds ?: 30).toString()) }
+    var agentForwarding by remember { mutableStateOf(source?.agentForwarding ?: false) }
+    var startupSnippetId by remember { mutableStateOf(source?.startupSnippetId) }
     var confirmDelete by remember { mutableStateOf(false) }
     // A new host gets its ID up front so forwards added before the first save can point at it.
     val hostId = remember { existing?.id ?: UUID.randomUUID().toString() }

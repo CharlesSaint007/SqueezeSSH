@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.History
@@ -27,6 +29,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -90,6 +94,8 @@ fun HostsScreen(
     onForgetQuick: (String) -> Unit,
     onAddHost: () -> Unit,
     onEditHost: (HostEntity) -> Unit,
+    onCopyHost: (HostEntity) -> Unit,
+    onDeleteHost: (HostEntity) -> Unit,
     onOpenSession: (String) -> Unit,
     onCloseSession: (String) -> Unit,
     onLocalShell: () -> Unit,
@@ -101,6 +107,9 @@ fun HostsScreen(
     var query by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf(HostSort.Name) }
     var menuOpen by remember { mutableStateOf(false) }
+    // The host whose long-press menu is open, and the one waiting for delete confirmation.
+    var menuHost by remember { mutableStateOf<HostEntity?>(null) }
+    var deleting by remember { mutableStateOf<HostEntity?>(null) }
     val quick = QuickConnect.parse(query)?.takeIf { query.contains('@') || query.contains(':') }
     val identityById = identities.associateBy { it.id }
 
@@ -238,9 +247,16 @@ fun HostsScreen(
                 Card(
                     Modifier.fillMaxWidth().combinedClickable(
                         onClick = { onConnect(host) },
-                        onLongClick = { onEditHost(host) },
+                        onLongClick = { menuHost = host },
                     ),
                 ) {
+                    HostContextMenu(
+                        expanded = menuHost?.id == host.id,
+                        onDismiss = { menuHost = null },
+                        onEdit = { menuHost = null; onEditHost(host) },
+                        onCopy = { menuHost = null; onCopyHost(host) },
+                        onDelete = { menuHost = null; deleting = host },
+                    )
                     ListItem(
                         headlineContent = { Text(host.nickname) },
                         supportingContent = {
@@ -268,9 +284,33 @@ fun HostsScreen(
             }
         }
     }
+
+    deleting?.let { host ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete ${host.nickname}?") },
+            text = { Text("The saved host and its port forwards are removed. Identities and keys are kept.") },
+            confirmButton = { TextButton(onClick = { deleting = null; onDeleteHost(host) }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
 private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+}
+
+/** The menu shown by long-pressing a host. */
+@Composable
+private fun HostContextMenu(expanded: Boolean, onDismiss: () -> Unit, onEdit: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = onEdit)
+        DropdownMenuItem(text = { Text("Copy as new config") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) }, onClick = onCopy)
+        DropdownMenuItem(
+            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+            leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
+            onClick = onDelete,
+        )
+    }
 }
