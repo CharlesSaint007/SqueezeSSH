@@ -39,6 +39,25 @@ class ThemeDeriverTest {
     }
 
     @Test
+    fun containersAreThemedAndReadable() {
+        for (theme in BuiltInThemes.all) {
+            val p = ThemeDeriver.derive(theme)
+            for ((name, pair) in mapOf(
+                "primary" to (p.onPrimaryContainer to p.primaryContainer),
+                "secondary" to (p.onSecondaryContainer to p.secondaryContainer),
+                "tertiary" to (p.onTertiaryContainer to p.tertiaryContainer),
+                "error" to (p.onErrorContainer to p.errorContainer),
+            )) {
+                val ratio = ColorMath.contrast(pair.first, pair.second)
+                assertTrue("${theme.name} on${name}Container contrast $ratio < 4.5", ratio >= 4.5)
+            }
+            // The FAB container must come from the theme, not Material's baseline purple (#EADDFF / #4F378B).
+            assertTrue(p.primaryContainer != 0xFFEADDFF.toInt() && p.primaryContainer != 0xFF4F378B.toInt())
+            assertTrue("${theme.name} FAB should stand out from the background", ColorMath.contrast(p.primaryContainer, p.background) > 1.2)
+        }
+    }
+
+    @Test
     fun primaryComesFromTerminalBlue() {
         val theme = BuiltInThemes.GruvboxDark
         assertEquals(theme.blue, ThemeDeriver.derive(theme).primary)
