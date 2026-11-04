@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require tag to be on master
+        run: |
+          git fetch origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Tag ${GITHUB_REF_NAME} is not on master; release tags must be cut from master."
+            exit 1
+          fi
+          echo "APP_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Decode signing keystore
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$SIGNING_KEYSTORE_B64" ]; then
+            echo "::error::SIGNING_KEYSTORE_B64 secret is not set; see README 'Release signing'."
+            exit 1
+          fi
+          echo "$SIGNING_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "SIGNING_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed stable APK
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleStableRelease
+          cp app/build/outputs/apk/stable/release/app-stable-release.apk \
+             "squeezessh-${APP_VERSION_NAME}.apk"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: SqueezeSSH ${{ github.ref_name }}
+          generate_release_notes: true
+          files: squeezessh-*.apk

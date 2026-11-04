@@ -1,0 +1,7 @@
+<resources>
+    <!-- Window theme only; all in-app colors come from Compose (see ui/theme). -->
+    <style name="Theme.SqueezeSSH" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/launch_background</item>
+    </style>
+    <color name="launch_background">#FF1A1B26</color>
+</resources>
