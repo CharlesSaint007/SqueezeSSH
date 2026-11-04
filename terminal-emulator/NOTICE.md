@@ -10,4 +10,5 @@ Termux as a whole is GPLv3, but these two libraries are a documented exception. 
 - New files: `TerminalBackend` (interface), `PtyBackend` (the original JNI PTY code, moved here), `StreamBackend` (backend over a pair of input/output streams, e.g. an SSH channel).
 - `TerminalColors`: resets to a per-instance scheme instead of the single static `COLOR_SCHEME`.
 - `TerminalColorScheme.of(...)`: builds a scheme from theme colors.
+- `TerminalRenderer`: always paints the session's own background color, instead of relying on the host app to set the view's background.
 - Build files converted to Gradle Kotlin DSL; `package` attributes removed from the manifests (AGP now uses `namespace`); upstream unit tests not vendored yet.
