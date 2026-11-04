@@ -1,9 +1,15 @@
 package me.nick.squeezessh
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,8 +22,10 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import me.nick.squeezessh.data.HostEntity
+import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.terminal.TerminalScreen
 import me.nick.squeezessh.ui.SettingsScreen
@@ -30,9 +38,17 @@ import me.nick.squeezessh.ui.theme.BuiltInThemes
 import me.nick.squeezessh.ui.theme.SqueezeTheme
 
 class MainActivity : ComponentActivity() {
+    /** A session a notification asked to open; consumed by the nav graph. */
+    private val pendingSessionId = MutableStateFlow<String?>(null)
+
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        // Sessions run either way; without the permission they just have no per-session notifications.
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleIntent(intent)
         val app = application as SqueezeApp
         val sessions = app.sessionManager
         val repo = app.settingsRepository
@@ -54,6 +70,17 @@ class MainActivity : ComponentActivity() {
 
             SqueezeTheme(settings.uiTheme) {
                 val nav = rememberNavController()
+                val pending by pendingSessionId.collectAsStateWithLifecycle()
+                LaunchedEffect(pending) {
+                    val id = pending ?: return@LaunchedEffect
+                    pendingSessionId.value = null
+                    if (sessions.get(id) != null) {
+                        nav.navigate("terminal/$id") {
+                            popUpTo("hosts")
+                            launchSingleTop = true
+                        }
+                    }
+                }
                 NavHost(navController = nav, startDestination = "hosts") {
                     composable("hosts") {
                         HostsScreen(
@@ -77,6 +104,7 @@ class MainActivity : ComponentActivity() {
                             onCloseSession = { id -> sessions.close(id) },
                             onLocalShell = {
                                 val entry = sessions.openLocalShell(settings.terminalTheme)
+                                onSessionStarted()
                                 nav.navigate("terminal/${entry.id}")
                             },
                             onIdentities = { nav.navigate("identities") },
@@ -117,6 +145,7 @@ class MainActivity : ComponentActivity() {
                                         theme = override ?: settings.terminalTheme,
                                         themeOverridden = override != null,
                                     )
+                                    onSessionStarted()
                                     nav.navigate("terminal/${entry.id}") { popUpTo("hosts") }
                                 },
                                 onBack = { nav.back() },
@@ -133,7 +162,12 @@ class MainActivity : ComponentActivity() {
                                 sessionManager = sessions,
                                 fontSizeSp = settings.fontSizeSp,
                                 onFontSizeChange = { sp -> scope.launch { repo.setFontSize(sp) } },
-                                onBack = { nav.back() },
+                                exitBehavior = settings.exitBehavior,
+                                onRememberExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
+                                onLeave = { keepRunning ->
+                                    if (!keepRunning) sessions.close(entry.id)
+                                    nav.back()
+                                },
                             )
                         }
                     }
@@ -157,11 +191,37 @@ class MainActivity : ComponentActivity() {
                             onUiThemeMode = { mode -> scope.launch { repo.setUiThemeMode(mode) } },
                             onUiTheme = { id -> scope.launch { repo.setUiTheme(id) } },
                             onFontSize = { sp -> scope.launch { repo.setFontSize(sp) } },
+                            onExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
+                            onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
                             onBack = { nav.back() },
                         )
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == SessionService.ACTION_OPEN_SESSION) {
+            pendingSessionId.value = intent.getStringExtra(SessionService.EXTRA_SESSION_ID)
+        }
+    }
+
+    /**
+     * A session just opened: start the foreground service that keeps it alive in the background, and on
+     * Android 13+ ask (once) for permission to show its notification.
+     */
+    private fun onSessionStarted() {
+        SessionService.ensureRunning(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

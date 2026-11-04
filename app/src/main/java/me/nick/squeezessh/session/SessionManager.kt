@@ -5,7 +5,6 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
 import me.nick.squeezessh.ui.theme.TerminalTheme
 import me.nick.squeezessh.ui.theme.toColorScheme
 
@@ -18,15 +17,33 @@ class SessionEntry(
     var theme: TerminalTheme,
     /** True when the host chose its own theme, so global theme changes leave this session alone. */
     val themeOverridden: Boolean = false,
+) {
+    val startedAt: Long = System.currentTimeMillis()
+
+    fun info() = SessionInfo(id, label, session.title, session.isRunning, startedAt)
+}
+
+/** An immutable snapshot of a session, for lists and notifications. */
+data class SessionInfo(
+    val id: String,
+    val label: String,
+    /** The terminal title set by the remote shell, if any. */
+    val title: String?,
+    val running: Boolean,
+    val startedAt: Long,
 )
 
 /**
- * Owns every live terminal session so they outlive any one screen. Milestone 4 moves this behind a foreground
- * service so sessions also survive the app being backgrounded.
+ * Owns every live terminal session so they outlive any one screen, and the activity itself: while any session
+ * is running, [SessionService] keeps the process in the foreground.
+ *
+ * All methods are called on the main thread, the same thread [TerminalSession] delivers its callbacks on.
  */
 class SessionManager {
-    private val _sessions = MutableStateFlow<List<SessionEntry>>(emptyList())
-    val sessions: StateFlow<List<SessionEntry>> = _sessions
+    private val entries = mutableListOf<SessionEntry>()
+
+    private val _sessions = MutableStateFlow<List<SessionInfo>>(emptyList())
+    val sessions: StateFlow<List<SessionInfo>> = _sessions
 
     /**
      * Sessions report to one client that fans events out to whichever screen is attached. Kept separate from the
@@ -46,28 +63,34 @@ class SessionManager {
             theme = theme,
             themeOverridden = themeOverridden,
         )
-        _sessions.update { it + entry }
+        entries += entry
+        refresh()
         return entry
     }
 
-    fun get(id: String): SessionEntry? = _sessions.value.firstOrNull { it.id == id }
+    fun get(id: String): SessionEntry? = entries.firstOrNull { it.id == id }
 
     /** Apply a new theme to every open session (the global theme changed). */
     fun applyTheme(theme: TerminalTheme) {
         val scheme = theme.toColorScheme()
-        for (entry in _sessions.value) {
+        for (entry in entries) {
             if (entry.themeOverridden) continue
             entry.theme = theme
             entry.session.setColorScheme(scheme)
         }
     }
 
+    /** Disconnect (if still running) and forget the session. */
     fun close(id: String) {
-        get(id)?.session?.finishIfRunning()
-        remove(id)
+        val entry = get(id) ?: return
+        entries.remove(entry)
+        entry.session.finishIfRunning()
+        refresh()
     }
 
-    internal fun remove(id: String) = _sessions.update { list -> list.filterNot { it.id == id } }
+    private fun refresh() {
+        _sessions.value = entries.map { it.info() }
+    }
 
     inner class DelegatingSessionClient : TerminalSessionClient by NoOpSessionClient {
         @Volatile
@@ -78,10 +101,12 @@ class SessionManager {
         }
 
         override fun onTitleChanged(changedSession: TerminalSession) {
+            refresh()
             delegate?.onTitleChanged(changedSession)
         }
 
         override fun onSessionFinished(finishedSession: TerminalSession) {
+            refresh()
             delegate?.onSessionFinished(finishedSession)
         }
 

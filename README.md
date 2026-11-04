@@ -2,7 +2,7 @@
 
 An open-source Android SSH client written in Kotlin, built as a replacement for the no-longer-maintained JuiceSSH.
 
-> **Status:** early development. Milestone 1 (project scaffold, CI/CD, theming) is in place. See the roadmap below.
+> **Status:** early development. SSH connections, a local shell, themes, and background sessions work. See the roadmap below.
 
 ## Planned features
 
@@ -18,13 +18,22 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 ## Roadmap
 
 1. ✅ Scaffold: Gradle project, `stable`/`dev` flavors, signing, CI and release workflows
-2. Terminal emulator + local shell + theme switching
-3. SSH core: hosts, identities, key generation/import, known hosts, jump hosts
-4. Background sessions and notifications
+2. ✅ Terminal emulator + local shell + theme switching
+3. ✅ SSH core: hosts, identities, key generation/import, known hosts, jump hosts
+4. ✅ Background sessions and notifications
 5. Port forwarding + snippets
 6. Bitwarden / Vaultwarden sync
 7. Export / import
 8. Polish, then the first `v0.1.0` release
+
+## Background sessions
+
+When you leave a running session, SqueezeSSH asks whether to **keep it running** or **disconnect**. You can make that choice permanent under Settings → Sessions. Each session kept running gets its own notification: tap it to go back to that session, or tap **Disconnect**. A summary notification shows how many are open and has **Disconnect all**.
+
+Sessions survive the app being backgrounded or swiped from Recents. Some phones (Samsung, Xiaomi, OnePlus and others) kill background apps more aggressively. If sessions drop with the screen off:
+
+- Settings → Apps → SqueezeSSH → Battery → **Unrestricted**
+- In SqueezeSSH, Settings → Sessions → **Keep device awake** (uses more battery)
 
 ## Installing with Obtainium
 

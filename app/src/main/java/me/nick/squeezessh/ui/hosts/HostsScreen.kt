@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import me.nick.squeezessh.R
 import me.nick.squeezessh.data.HostEntity
 import me.nick.squeezessh.data.IdentityEntity
-import me.nick.squeezessh.session.SessionEntry
+import me.nick.squeezessh.session.SessionInfo
 
 /** A parsed `user@host:port` quick-connect string. */
 data class QuickConnect(val username: String?, val host: String, val port: Int) {
@@ -73,7 +73,7 @@ enum class HostSort(val label: String) { Name("Name"), Recent("Recent"), Frequen
 fun HostsScreen(
     hosts: List<HostEntity>,
     identities: List<IdentityEntity>,
-    sessions: List<SessionEntry>,
+    sessions: List<SessionInfo>,
     onConnect: (HostEntity) -> Unit,
     onQuickConnect: (QuickConnect) -> Unit,
     onAddHost: () -> Unit,
@@ -175,7 +175,7 @@ fun HostsScreen(
                         ListItem(
                             headlineContent = { Text(entry.label) },
                             supportingContent = {
-                                Text(if (entry.session.isRunning) entry.session.title ?: "Connected" else "Ended")
+                                Text(if (entry.running) entry.title ?: "Running in background" else "Ended")
                             },
                             leadingContent = { Icon(Icons.Filled.Terminal, contentDescription = null) },
                             trailingContent = {

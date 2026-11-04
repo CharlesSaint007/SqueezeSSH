@@ -3,12 +3,15 @@ package me.nick.squeezessh.ssh
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import android.util.Log
 import org.apache.sshd.client.SshClient
 import org.apache.sshd.client.auth.keyboard.UserInteraction
 import org.apache.sshd.client.keyverifier.ServerKeyVerifier
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.common.AttributeRepository
 import org.apache.sshd.common.SshException
+import org.apache.sshd.common.session.Session
+import org.apache.sshd.common.session.SessionListener
 import org.apache.sshd.common.util.net.SshdSocketAddress
 import org.apache.sshd.core.CoreModuleProperties
 import java.io.IOException
@@ -48,6 +51,16 @@ class SshConnector(private val hostKeys: HostKeyVerifier) {
     private val client: SshClient = SshClient.setUpDefaultClient().apply {
         // Host keys are verified per connection in [verifyHostKey]; this fallback rejects anything else.
         serverKeyVerifier = ServerKeyVerifier { _, _, _ -> false }
+        // Log why sessions end; a dropped connection is otherwise silent.
+        addSessionListener(object : SessionListener {
+            override fun sessionException(session: Session, t: Throwable) {
+                Log.w(TAG, "Session ${session.ioSession.remoteAddress} error: ${t.javaClass.simpleName}: ${t.message}")
+            }
+
+            override fun sessionDisconnect(session: Session, reason: Int, msg: String?, language: String?, initiator: Boolean) {
+                Log.i(TAG, "Session ${session.ioSession.remoteAddress} disconnect reason=$reason by=${if (initiator) "us" else "server"}: $msg")
+            }
+        })
         start()
     }
 
@@ -130,10 +143,18 @@ class SshConnector(private val hostKeys: HostKeyVerifier) {
             override fun getUpdatedPassword(session: ClientSession, prompt: String?, lang: String?): String? = null
         }
 
+        // MINA closes a session after 10 minutes of no channel data by default, and its keepalives don't count
+        // as data, so an idle shell would drop even with keepalives on. An interactive terminal should stay
+        // open until the user or the server ends it; the server's own timeouts still apply.
+        CoreModuleProperties.IDLE_TIMEOUT.set(session, Duration.ZERO)
         CoreModuleProperties.HEARTBEAT_INTERVAL.set(
             session,
             Duration.ofSeconds(target.keepaliveSeconds.coerceAtLeast(0).toLong()),
         )
+        // Keepalives use the standard OpenSSH request name so servers reply instead of logging an unknown
+        // request, and three unanswered ones mark the connection dead instead of waiting forever.
+        CoreModuleProperties.HEARTBEAT_REQUEST.set(session, "keepalive@openssh.com")
+        CoreModuleProperties.HEARTBEAT_NO_REPLY_MAX.set(session, 3)
     }
 
     private suspend fun verifyHostKey(target: SshTarget, key: PublicKey, prompts: SshPrompts): Boolean {
@@ -152,6 +173,7 @@ class SshConnector(private val hostKeys: HostKeyVerifier) {
         val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(15)
         val AUTH_TIMEOUT: Duration = Duration.ofSeconds(120)
         val HOST_KEY_REJECTED = AttributeRepository.AttributeKey<Boolean>()
+        const val TAG = "SshConnector"
 
         fun rootMessage(e: Throwable): String {
             val root = generateSequence(e) { it.cause }.last()
