@@ -1,5 +1,6 @@
 package me.nick.squeezessh.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -88,10 +89,17 @@ data class KeyEntity(
     /** SHA256 fingerprint, as `ssh-keygen -l` prints it. */
     val fingerprint: String,
     val privateKeySecretId: String,
-    /** Set once the key is synced to Bitwarden/Vaultwarden (milestone 6). */
+    /** The Bitwarden/Vaultwarden SSH Key item this key is linked to, once synced. */
     val bitwardenCipherId: String? = null,
+    /** The item's revision date as of the last sync; a different one on the server means it changed there. */
     val bitwardenRevisionDate: String? = null,
+    /** Whether this key takes part in Bitwarden sync. */
+    @ColumnInfo(defaultValue = "1") val bitwardenSync: Boolean = true,
+    /** Changed here since the last sync, so the change still has to be sent to the vault. */
+    @ColumnInfo(defaultValue = "0") val bitwardenDirty: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
+    /** When the key was last changed on this device; breaks ties when both sides changed. */
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
 )
 
 /** A host key we have seen and the user accepted, keyed by `host:port` like OpenSSH's known_hosts. */

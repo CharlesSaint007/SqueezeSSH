@@ -55,6 +55,7 @@ fun SettingsScreen(
     onFontSize: (Int) -> Unit,
     onExitBehavior: (ExitBehavior) -> Unit,
     onKeepAwake: (Boolean) -> Unit,
+    onBitwarden: () -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -72,6 +73,19 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item {
+                SectionTitle("Sync")
+                Card(Modifier.fillMaxWidth().clickable(onClick = onBitwarden)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Bitwarden / Vaultwarden", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Sync SSH keys with your vault",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             item { SectionTitle("Terminal theme") }
             items(BuiltInThemes.all, key = { "term-" + it.id }) { theme ->
                 ThemeRow(theme, selected = theme.id == settings.terminalThemeId, onClick = { onTerminalTheme(theme.id) })

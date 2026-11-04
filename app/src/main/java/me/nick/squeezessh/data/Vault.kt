@@ -76,7 +76,12 @@ class Vault(private val db: AppDatabase, private val secrets: SecretStore) {
         return storeKey(name, parsed)
     }
 
-    private suspend fun storeKey(name: String, parsed: ParsedKey): KeyEntity {
+    private suspend fun storeKey(
+        name: String,
+        parsed: ParsedKey,
+        cipherId: String? = null,
+        revisionDate: String? = null,
+    ): KeyEntity {
         val pem = KeyCodec.toOpenSshPrivateKey(parsed.keyPair, name)
         val secretId = secrets.putString(pem)
         val entity = KeyEntity(
@@ -85,17 +90,82 @@ class Vault(private val db: AppDatabase, private val secrets: SecretStore) {
             publicKey = parsed.publicKey,
             fingerprint = parsed.fingerprint,
             privateKeySecretId = secretId,
+            bitwardenCipherId = cipherId,
+            bitwardenRevisionDate = revisionDate,
         )
         db.keys().upsert(entity)
+        if (cipherId == null) onKeysChanged()
         return entity
     }
 
-    suspend fun renameKey(key: KeyEntity, name: String) = db.keys().upsert(key.copy(name = name))
+    suspend fun renameKey(key: KeyEntity, name: String) {
+        db.keys().upsert(key.copy(name = name, bitwardenDirty = key.bitwardenCipherId != null, updatedAt = now()))
+        onKeysChanged()
+    }
+
+    /** Turn Bitwarden sync on or off for one key. Turning it off unlinks the key but leaves the vault item. */
+    suspend fun setKeySync(key: KeyEntity, enabled: Boolean) {
+        val updated = if (enabled) {
+            key.copy(bitwardenSync = true)
+        } else {
+            key.copy(bitwardenSync = false, bitwardenCipherId = null, bitwardenRevisionDate = null, bitwardenDirty = false)
+        }
+        db.keys().upsert(updated)
+        if (enabled) onKeysChanged()
+    }
 
     suspend fun deleteKey(key: KeyEntity) {
         db.withTransaction { db.keys().delete(key) }
         secrets.delete(key.privateKeySecretId)
     }
+
+    // ---- Bitwarden sync support ----
+
+    /** Called after a local key change that sync should send to the vault; set by the sync manager. */
+    var onKeysChanged: () -> Unit = {}
+
+    suspend fun allKeys(): List<KeyEntity> = db.keys().getAll()
+
+    /** Store a key that came from the vault, already linked to its item. */
+    suspend fun addSyncedKey(name: String, privateKey: String, cipherId: String, revisionDate: String): KeyEntity {
+        val parsed = withContext(Dispatchers.Default) { KeyCodec.parse(privateKey, null, name) }
+        return storeKey(name, parsed, cipherId, revisionDate)
+    }
+
+    /** Replace a key's name and key material with the vault's copy. */
+    suspend fun applySyncedKey(key: KeyEntity, name: String, privateKey: String, cipherId: String, revisionDate: String) {
+        val parsed = withContext(Dispatchers.Default) { KeyCodec.parse(privateKey, null, name) }
+        secrets.putString(KeyCodec.toOpenSshPrivateKey(parsed.keyPair, name)).let { newSecret ->
+            db.keys().upsert(
+                key.copy(
+                    name = name,
+                    type = parsed.type,
+                    publicKey = parsed.publicKey,
+                    fingerprint = parsed.fingerprint,
+                    privateKeySecretId = newSecret,
+                    bitwardenCipherId = cipherId,
+                    bitwardenRevisionDate = revisionDate,
+                    bitwardenDirty = false,
+                ),
+            )
+            if (newSecret != key.privateKeySecretId) secrets.delete(key.privateKeySecretId)
+        }
+    }
+
+    /** Record that [key] now matches vault item [cipherId] at [revisionDate]. */
+    suspend fun markSynced(key: KeyEntity, cipherId: String, revisionDate: String) {
+        // Re-read so an edit made while the request was in flight is not lost; it stays dirty for the next sync.
+        val current = db.keys().get(key.id) ?: return
+        val editedMeanwhile = current.name != key.name
+        db.keys().upsert(current.copy(bitwardenCipherId = cipherId, bitwardenRevisionDate = revisionDate, bitwardenDirty = editedMeanwhile))
+    }
+
+    /** The vault item is gone: keep the key, but stop syncing it so it isn't uploaded again. */
+    suspend fun unlinkKey(key: KeyEntity) {
+        db.keys().upsert(key.copy(bitwardenCipherId = null, bitwardenRevisionDate = null, bitwardenDirty = false, bitwardenSync = false))
+    }
+
+    private fun now() = System.currentTimeMillis()
 
     /** The decrypted key pair, for handing to the SSH client. */
     suspend fun keyPair(key: KeyEntity): KeyPair? {

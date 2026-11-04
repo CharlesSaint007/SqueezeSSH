@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +45,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import me.nick.squeezessh.bitwarden.BitwardenSync
+import me.nick.squeezessh.bitwarden.SyncStatus
 import me.nick.squeezessh.crypto.KeyAlgorithm
 import me.nick.squeezessh.crypto.PassphraseRequiredException
 import me.nick.squeezessh.data.KeyEntity
@@ -50,7 +54,14 @@ import me.nick.squeezessh.data.Vault
 import me.nick.squeezessh.ui.common.BackTopBar
 
 @Composable
-fun KeysScreen(keys: List<KeyEntity>, vault: Vault, onBack: () -> Unit) {
+fun KeysScreen(
+    keys: List<KeyEntity>,
+    vault: Vault,
+    bitwarden: BitwardenSync,
+    syncStatus: SyncStatus,
+    onOpenBitwarden: () -> Unit,
+    onBack: () -> Unit,
+) {
     var showGenerate by remember { mutableStateOf(false) }
     var showImport by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<KeyEntity?>(null) }
@@ -84,6 +95,7 @@ fun KeysScreen(keys: List<KeyEntity>, vault: Vault, onBack: () -> Unit) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item { SyncBanner(syncStatus, onOpenBitwarden) }
             if (keys.isEmpty()) {
                 item {
                     Text(
@@ -104,6 +116,9 @@ fun KeysScreen(keys: List<KeyEntity>, vault: Vault, onBack: () -> Unit) {
                             }
                         },
                         leadingContent = { Icon(Icons.Filled.Key, contentDescription = null) },
+                        trailingContent = {
+                            if (key.bitwardenCipherId != null) Icon(Icons.Filled.CloudDone, contentDescription = "Synced to vault")
+                        },
                     )
                 }
             }
@@ -128,6 +143,8 @@ fun KeysScreen(keys: List<KeyEntity>, vault: Vault, onBack: () -> Unit) {
                 )
             },
             vault = vault,
+            bitwarden = bitwarden,
+            signedIn = syncStatus is SyncStatus.SignedIn,
             onDismiss = { selected = null },
         )
     }
@@ -235,20 +252,62 @@ private fun ImportKeyDialog(vault: Vault, initialText: String, onDone: () -> Uni
 }
 
 @Composable
+private fun SyncBanner(status: SyncStatus, onOpen: () -> Unit) {
+    val text = when (status) {
+        SyncStatus.SignedOut -> "Bitwarden sync is off. Tap to set it up."
+        is SyncStatus.SignedIn -> when {
+            status.syncing -> "Syncing with ${status.email}…"
+            status.error != null -> "Sync failed: ${status.error}"
+            else -> "Syncing with ${status.email}" + (status.summary?.let { " · $it" } ?: "")
+        }
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = if ((status as? SyncStatus.SignedIn)?.error != null) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 4.dp),
+    )
+}
+
+@Composable
 private fun KeyDetailsDialog(
     key: KeyEntity,
     vault: Vault,
+    bitwarden: BitwardenSync,
+    signedIn: Boolean,
     onCopy: () -> Unit,
     onShare: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf(key.name) }
+    var syncEnabled by remember { mutableStateOf(key.bitwardenSync) }
+    var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val linked = key.bitwardenCipherId != null
+
+    fun delete(fromVault: Boolean) = scope.launch {
+        if (fromVault) {
+            // Trash first: if it fails the key is still here and the user can retry.
+            runCatching { bitwarden.trash(key) }.onFailure {
+                error = "Could not remove it from the vault: ${it.message}"
+                return@launch
+            }
+        }
+        vault.deleteKey(key)
+        onDismiss()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(key.name) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true)
                 Text(key.fingerprint, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 Text("Public key:", style = MaterialTheme.typography.labelMedium)
                 Text(key.publicKey, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
@@ -256,23 +315,57 @@ private fun KeyDetailsDialog(
                     TextButton(onClick = onCopy) { Text("Copy") }
                     TextButton(onClick = onShare) { Text("Share") }
                 }
+                if (signedIn) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Sync with Bitwarden")
+                            Text(
+                                if (linked) "Saved in your vault" else "Not in your vault yet",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = syncEnabled, onCheckedChange = { syncEnabled = it })
+                    }
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (confirmDelete) {
                     Text(
                         "Delete this key? Identities using it will no longer log in with it.",
                         color = MaterialTheme.colorScheme.error,
                     )
-                }
-                TextButton(
-                    onClick = {
-                        if (!confirmDelete) {
-                            confirmDelete = true
-                        } else {
-                            scope.launch { vault.deleteKey(key); onDismiss() }
+                    if (linked && signedIn) {
+                        TextButton(onClick = { delete(fromVault = true) }) {
+                            Text("Delete here and move to vault trash", color = MaterialTheme.colorScheme.error)
                         }
-                    },
-                ) { Text(if (confirmDelete) "Yes, delete" else "Delete key", color = MaterialTheme.colorScheme.error) }
+                        TextButton(onClick = { delete(fromVault = false) }) {
+                            Text("Delete here only (keep in vault)", color = MaterialTheme.colorScheme.error)
+                        }
+                    } else {
+                        TextButton(onClick = { delete(fromVault = false) }) {
+                            Text("Yes, delete", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                } else {
+                    TextButton(onClick = { confirmDelete = true }) {
+                        Text("Delete key", color = MaterialTheme.colorScheme.error)
+                    }
+                }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    scope.launch {
+                        if (syncEnabled != key.bitwardenSync) vault.setKeySync(key, syncEnabled)
+                        val current = vault.key(key.id)
+                        if (current != null && name.trim() != current.name) vault.renameKey(current, name.trim())
+                        onDismiss()
+                    }
+                },
+            ) { Text("Done") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
