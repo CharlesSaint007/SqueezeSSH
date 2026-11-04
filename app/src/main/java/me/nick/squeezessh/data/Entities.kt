@@ -47,6 +47,8 @@ data class HostEntity(
     val compression: Boolean = false,
     /** A snippet typed into the shell once it is ready. */
     val startupSnippetId: String? = null,
+    /** Ask for a fingerprint / screen lock each time before connecting to this host. */
+    @ColumnInfo(defaultValue = "0") val requireBiometric: Boolean = false,
     val lastConnectedAt: Long? = null,
     val connectCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),

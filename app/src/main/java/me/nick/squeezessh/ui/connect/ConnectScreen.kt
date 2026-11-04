@@ -39,6 +39,11 @@ fun ConnectScreen(
     onConnected: (SshShellBackend) -> Unit,
     onBack: () -> Unit,
     usernameOverride: String? = null,
+    /**
+     * Prove who is holding the phone (fingerprint / face / screen lock) before connecting; used for hosts that
+     * require it. Returns null when it succeeded, else a message to show. Null means "don't ask".
+     */
+    authenticate: (suspend () -> String?)? = null,
 ) {
     val prompter = remember { ConnectPrompter() }
     var error by remember { mutableStateOf<String?>(null) }
@@ -47,6 +52,12 @@ fun ConnectScreen(
     LaunchedEffect(attempt) {
         error = null
         try {
+            if (host.requireBiometric && authenticate != null) {
+                authenticate()?.let { problem ->
+                    error = problem
+                    return@LaunchedEffect
+                }
+            }
             val backend = connections.openShell(host, prompter, usernameOverride)
             onConnected(backend)
         } catch (e: CancellationException) {

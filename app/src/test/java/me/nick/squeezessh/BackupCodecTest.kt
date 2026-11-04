@@ -119,6 +119,16 @@ class BackupCodecTest {
     }
 
     @Test
+    fun perHostBiometricRequirementSurvivesAnEncryptedBackup() {
+        val withFlag = file().copy(hosts = listOf(HostBackup(id = "h1", nickname = "pi5", address = "pi5", requireBiometric = true)))
+        val text = BackupCodec.encodeEncrypted(withFlag, "pw-12345678", fast)
+        val locked = (BackupCodec.read(text) as me.nick.squeezessh.backup.ReadBackup.Locked).file
+        assertTrue(BackupCodec.decrypt(locked, "pw-12345678").hosts.single().requireBiometric)
+        // Backups made before the option existed read as "off".
+        assertFalse(BackupCodec.decode(BackupCodec.encode(file()).replace("\"requireBiometric\": false,", "")).hosts.single().requireBiometric)
+    }
+
+    @Test
     fun settingsFallBackForMissingOrUnknownValues() {
         val current = Settings(fontSizeSp = 20, exitBehavior = ExitBehavior.Disconnect)
         val restored = SettingsBackup(fontSizeSp = 12, exitBehavior = "SomethingNew").toSettings(current)

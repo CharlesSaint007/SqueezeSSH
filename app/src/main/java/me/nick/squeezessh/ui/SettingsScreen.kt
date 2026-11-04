@@ -65,6 +65,8 @@ fun SettingsScreen(
     onKeepAwake: (Boolean) -> Unit,
     onVolumeKeysFontSize: (Boolean) -> Unit,
     onAutoReconnect: (Boolean) -> Unit,
+    biometricAvailable: Boolean,
+    onRequireBiometricToOpen: (Boolean) -> Unit,
     onBitwarden: () -> Unit,
     onBackup: () -> Unit,
     /** How many hosts have a saved host key. */
@@ -112,6 +114,36 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+            }
+            item {
+                SectionTitle("Security")
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable(enabled = biometricAvailable || settings.requireBiometricToOpen) {
+                            onRequireBiometricToOpen(!settings.requireBiometricToOpen)
+                        }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Require fingerprint to open the app", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (biometricAvailable) {
+                                "Asks for your fingerprint, face or screen lock when the app opens, and again after it's been " +
+                                    "in the background for a minute. Running sessions are hidden until you unlock."
+                            } else {
+                                "Set up a fingerprint or screen lock in your phone's settings to use this."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.requireBiometricToOpen,
+                        onCheckedChange = onRequireBiometricToOpen,
+                        enabled = biometricAvailable || settings.requireBiometricToOpen,
+                    )
                 }
             }
             item {

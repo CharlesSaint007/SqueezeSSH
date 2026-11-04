@@ -48,6 +48,8 @@ data class Settings(
     val autoReconnect: Boolean = true,
     /** Quick-connect targets (`user@host:port`), newest first. */
     val recentQuickConnects: List<String> = emptyList(),
+    /** Ask for a fingerprint / screen lock when the app is opened (and again after it's been in the background). */
+    val requireBiometricToOpen: Boolean = false,
     /** Themes made in the theme editor. */
     val customThemes: List<TerminalTheme> = emptyList(),
 ) {
@@ -85,6 +87,7 @@ class SettingsRepository(context: Context) {
             keepAwake = p[KEEP_AWAKE] ?: false,
             volumeKeysFontSize = p[VOLUME_KEYS_FONT] ?: true,
             autoReconnect = p[AUTO_RECONNECT] ?: true,
+            requireBiometricToOpen = p[REQUIRE_BIOMETRIC] ?: false,
             recentQuickConnects = p[RECENT_QUICK]?.split('\n')?.filter { it.isNotBlank() }.orEmpty(),
             customThemes = p[CUSTOM_THEMES]?.let(::decodeThemes).orEmpty(),
         )
@@ -101,6 +104,7 @@ class SettingsRepository(context: Context) {
     suspend fun setKeepAwake(enabled: Boolean) = store.edit { it[KEEP_AWAKE] = enabled }
     suspend fun setVolumeKeysFontSize(enabled: Boolean) = store.edit { it[VOLUME_KEYS_FONT] = enabled }
     suspend fun setAutoReconnect(enabled: Boolean) = store.edit { it[AUTO_RECONNECT] = enabled }
+    suspend fun setRequireBiometricToOpen(enabled: Boolean) = store.edit { it[REQUIRE_BIOMETRIC] = enabled }
 
     /** Move [target] to the front of the quick-connect history, keeping the last [MAX_RECENT_QUICK]. */
     suspend fun rememberQuickConnect(target: String) = store.edit {
@@ -150,6 +154,7 @@ class SettingsRepository(context: Context) {
         val VOLUME_KEYS_FONT = booleanPreferencesKey("volume_keys_font_size")
         val RECENT_QUICK = stringPreferencesKey("recent_quick_connects")
         val AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
+        val REQUIRE_BIOMETRIC = booleanPreferencesKey("require_biometric_to_open")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         private val themeJson = Json { ignoreUnknownKeys = true }
 
