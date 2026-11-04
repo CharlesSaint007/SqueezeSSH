@@ -31,25 +31,34 @@ import me.nick.squeezessh.ssh.ForwardController
 import me.nick.squeezessh.ssh.ForwardState
 import me.nick.squeezessh.ui.snippets.SnippetListItem
 
-/** Pick a snippet to type into the session. */
+/**
+ * Pick a snippet to type into the session. Opened from FN → SNIP or a long press on the terminal; a long press
+ * used to start text selection, so [onSelectText] offers that from here instead.
+ */
 @Composable
 fun SnippetPicker(
     snippets: List<SnippetEntity>,
     onPick: (SnippetEntity) -> Unit,
     onManage: () -> Unit,
+    onSelectText: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Snippets") },
         text = {
-            if (snippets.isEmpty()) {
-                Text("No snippets yet.")
-            } else {
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                    items(snippets, key = { it.id }) { snippet ->
-                        Column(Modifier.fillMaxWidth().clickable { onPick(snippet) }) { SnippetListItem(snippet) }
+            Column {
+                if (snippets.isEmpty()) {
+                    Text("No snippets yet.")
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                        items(snippets, key = { it.id }) { snippet ->
+                            Column(Modifier.fillMaxWidth().clickable { onPick(snippet) }) { SnippetListItem(snippet) }
+                        }
                     }
+                }
+                if (onSelectText != null) {
+                    TextButton(onClick = onSelectText, modifier = Modifier.padding(top = 4.dp)) { Text("Select text to copy") }
                 }
             }
         },

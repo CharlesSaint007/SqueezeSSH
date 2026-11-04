@@ -47,49 +47,60 @@ class BackupService(
     private val appVersion: String,
 ) {
 
-    suspend fun export(passphrase: String?): String = withContext(Dispatchers.IO) {
+    /**
+     * The whole backup, encrypted with [passphrase]. [includeSecrets] adds identity passwords and private keys
+     * inside the same encryption.
+     */
+    suspend fun export(passphrase: String, includeSecrets: Boolean): String = withContext(Dispatchers.IO) {
         val keys = db.keys().getAll()
         val identities = db.identities().getAll()
-        val sealed = passphrase?.let { pass ->
+        val included = if (includeSecrets) {
             val privateKeys = keys.filter { it.hasPrivateKey }.mapNotNull { k ->
                 secrets.getString(k.privateKeySecretId)?.let { k.id to it }
             }.toMap()
             val passwords = identities.mapNotNull { i -> i.passwordSecretId?.let { id -> secrets.getString(id)?.let { i.id to it } } }.toMap()
-            BackupCodec.seal(Secrets(passwords = passwords, privateKeys = privateKeys), pass)
+            Secrets(passwords = passwords, privateKeys = privateKeys)
+        } else {
+            null
         }
         val s = settings.settings.first()
-        BackupCodec.encode(
-            BackupFile(
-                exportedAt = System.currentTimeMillis(),
-                appVersion = appVersion,
-                hosts = db.hosts().getAll().map { it.toBackup() },
-                identities = identities.map { IdentityBackup(it.id, it.nickname, it.username, it.keyId) },
-                keys = keys.map {
-                    KeyBackup(it.id, it.name, it.type, it.publicKey, it.fingerprint, it.bitwardenCipherId, it.bitwardenSync, it.createdAt)
-                },
-                forwards = db.forwards().getAll().map {
-                    ForwardBackup(it.id, it.hostId, it.type.name, it.bindAddress, it.bindPort, it.destHost, it.destPort, it.autoStart)
-                },
-                snippets = db.snippets().getAll().map { SnippetBackup(it.id, it.name, it.text, it.sendEnter) },
-                knownHosts = db.knownHosts().getAll().map { KnownHostBackup(it.hostPort, it.keyType, it.fingerprint, it.publicKey, it.addedAt) },
-                settings = SettingsBackup(
-                    s.terminalThemeId, s.uiThemeMode.name, s.uiThemeId, s.fontSizeSp, s.exitBehavior.name, s.keepAwake, s.volumeKeysFontSize,
-                    s.autoReconnect, s.customThemes.map(CustomThemeJson::of),
-                ),
-                secrets = sealed,
+        val file = BackupFile(
+            exportedAt = System.currentTimeMillis(),
+            appVersion = appVersion,
+            hosts = db.hosts().getAll().map { it.toBackup() },
+            identities = identities.map { IdentityBackup(it.id, it.nickname, it.username, it.keyId) },
+            keys = keys.map {
+                KeyBackup(it.id, it.name, it.type, it.publicKey, it.fingerprint, it.bitwardenCipherId, it.bitwardenSync, it.createdAt)
+            },
+            forwards = db.forwards().getAll().map {
+                ForwardBackup(it.id, it.hostId, it.type.name, it.bindAddress, it.bindPort, it.destHost, it.destPort, it.autoStart)
+            },
+            snippets = db.snippets().getAll().map { SnippetBackup(it.id, it.name, it.text, it.sendEnter) },
+            knownHosts = db.knownHosts().getAll().map { KnownHostBackup(it.hostPort, it.keyType, it.fingerprint, it.publicKey, it.addedAt) },
+            settings = SettingsBackup(
+                s.terminalThemeId, s.uiThemeMode.name, s.uiThemeId, s.fontSizeSp, s.exitBehavior.name, s.keepAwake, s.volumeKeysFontSize,
+                s.autoReconnect, s.customThemes.map(CustomThemeJson::of),
             ),
+            includedSecrets = included,
         )
+        BackupCodec.encodeEncrypted(file, passphrase)
     }
 
-    /** Parse a file without importing it, to show what it holds and whether it needs a passphrase. */
-    fun read(text: String): BackupFile = BackupCodec.decode(text)
+    /** Recognise a file without unlocking it. */
+    fun read(text: String): ReadBackup = BackupCodec.read(text)
+
+    /** Unlock an encrypted backup to see what it holds; throws [WrongPassphraseException]. */
+    suspend fun unlock(file: EncryptedBackup, passphrase: String): BackupFile =
+        withContext(Dispatchers.Default) { BackupCodec.decrypt(file, passphrase) }
 
     /**
-     * Restore [file]. [passphrase] unlocks its secrets when it has them; null skips them (keys then come back
-     * without their private half). Throws [WrongPassphraseException] before changing anything.
+     * Restore [file]. Its secrets come from [BackupFile.includedSecrets] (encrypted files, already unlocked), or
+     * for an older unencrypted file from [BackupFile.secrets] opened with [passphrase]; null skips those (keys
+     * then come back without their private half). Throws [WrongPassphraseException] before changing anything.
      */
     suspend fun import(file: BackupFile, mode: ImportMode, passphrase: String?): ImportResult = withContext(Dispatchers.IO) {
-        val opened = file.secrets?.takeIf { passphrase != null }?.let { BackupCodec.open(it, passphrase!!) }
+        val opened = file.includedSecrets
+            ?: file.secrets?.takeIf { passphrase != null }?.let { BackupCodec.open(it, passphrase!!) }
 
         // Secrets are written outside the database, so collect what to write and what becomes unused, and
         // touch the secret files only once the database transaction has succeeded.

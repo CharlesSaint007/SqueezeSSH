@@ -30,6 +30,8 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 
 - **Shortcuts:** long-press the app icon for your most recently used hosts, or pin any host to the home screen
   from its settings (the *add to home screen* icon). Either one connects straight away.
+- **Host menu:** long-press a host for *Edit*, *Copy as new config* (opens a new host pre-filled with this one's
+  settings and port forwards, saved only if you tap Save) and *Delete*.
 - **Quick connect:** type `user@host[:port]` in the search box. The last 5 that connected are listed under
   *Recent quick connects*.
 - **Terminal:** tap the terminal to show or hide the key bar. The bar's keyboard key shows or hides the keyboard,
@@ -50,7 +52,8 @@ Each host can have port forwards, set up in the host's settings:
 Forwards listen on `127.0.0.1` unless you allow other devices. They start when the host connects (or from the
 session with **FN → PORTS**, which also shows each forward's status and errors), and stop when it disconnects.
 
-**Snippets** (*⋮ → Snippets*) are saved commands. In a session, **FN → SNIP** types one in. A host can also run
+**Snippets** (*⋮ → Snippets*) are saved commands. In a session, **long-press the terminal** or use **FN → SNIP**
+to type one in. (Long-press used to start text selection; that's now *Select text to copy* in the same list.) A host can also run
 a *startup snippet* when it connects.
 
 ## Backup and moving to a new phone
@@ -58,8 +61,10 @@ a *startup snippet* when it connects.
 **Settings → Backup & restore** exports hosts, identities, keys (public halves and Bitwarden links), port
 forwards, snippets, known hosts and settings to a `.squeezessh.json` file through the system file picker.
 
-- *Include passwords and private keys* adds them to the file, encrypted with a passphrase you choose
-  (Argon2id + AES-256-GCM). Without it the file holds no secrets at all.
+- The whole file is always encrypted with a passphrase you choose (Argon2id + AES-256-GCM), so even host names
+  and addresses aren't readable without it.
+- *Include passwords and private keys* adds those too, inside the same encryption.
+- Backups made by earlier versions (unencrypted, with only the secrets encrypted) still import.
 - **Import** offers *Merge* (add to what's here; items with the same ID are updated) or *Replace* (delete
   everything first).
 - **New phone:** install, import the backup, then sign in to Bitwarden sync. Keys restored without their
@@ -95,12 +100,19 @@ Sessions survive the app being backgrounded or swiped from Recents. Some phones 
 
 ## Installing with Obtainium
 
-Every build is published to [GitHub Releases](../../releases). Add the repo URL `https://github.com/CharlesSaint007/SqueezeSSH` to Obtainium once for each channel:
+Every build is published to [GitHub Releases](../../releases).
+
+**Stable:** in Obtainium, add `https://github.com/CharlesSaint007/SqueezeSSH` and leave the defaults
+(*Include prereleases* off). Stable releases contain only the stable APK and dev builds are always pre-releases,
+so no APK filter is needed.
+
+**Dev** (optional, for testing new builds): add the same URL a second time, turn *Include prereleases* on, and set
+the APK filter to `^squeezessh-dev-.*\.apk$`.
 
 | Channel | App ID | Obtainium settings |
 |---|---|---|
-| Stable | `me.nick.squeezessh` | Include prereleases **off**. APK filter: `^squeezessh-\d.*\.apk$` |
-| Dev | `me.nick.squeezessh.dev` | Include prereleases **on**. APK filter: `^squeezessh-dev-.*\.apk$` |
+| Stable | `me.nick.squeezessh` | Defaults: prereleases off, no filter |
+| Dev | `me.nick.squeezessh.dev` | Prereleases **on**, APK filter `^squeezessh-dev-.*\.apk$` |
 
 The two channels have different app IDs, so they install side by side.
 
