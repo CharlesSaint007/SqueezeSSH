@@ -47,7 +47,12 @@ sealed interface ExtraKey {
 
     /** Switches the bar between the main keys and the function keys. */
     data class Page(override val label: String, val functionKeys: Boolean) : ExtraKey
+
+    /** Opens one of the session's panels. */
+    data class Panel(override val label: String, val panel: SessionPanel) : ExtraKey
 }
+
+enum class SessionPanel { Snippets, Forwards }
 
 enum class StickyModifier { Ctrl, Alt }
 
@@ -79,7 +84,7 @@ val MainKeys: List<List<ExtraKey>> = listOf(
     ),
 )
 
-/** The FN page: F1–F12 and a key back to the main page. */
+/** The FN page: F1–F12, the snippet and port-forward panels, and a key back to the main page. */
 val FunctionKeys: List<List<ExtraKey>> = listOf(
     listOf(
         ExtraKey.Code("F1", KeyEvent.KEYCODE_F1),
@@ -88,6 +93,7 @@ val FunctionKeys: List<List<ExtraKey>> = listOf(
         ExtraKey.Code("F4", KeyEvent.KEYCODE_F4),
         ExtraKey.Code("F5", KeyEvent.KEYCODE_F5),
         ExtraKey.Code("F6", KeyEvent.KEYCODE_F6),
+        ExtraKey.Panel("SNIP", SessionPanel.Snippets),
         ExtraKey.Page("BACK", functionKeys = false),
     ),
     listOf(
@@ -97,6 +103,7 @@ val FunctionKeys: List<List<ExtraKey>> = listOf(
         ExtraKey.Code("F10", KeyEvent.KEYCODE_F10),
         ExtraKey.Code("F11", KeyEvent.KEYCODE_F11),
         ExtraKey.Code("F12", KeyEvent.KEYCODE_F12),
+        ExtraKey.Panel("PORTS", SessionPanel.Forwards),
     ),
 )
 

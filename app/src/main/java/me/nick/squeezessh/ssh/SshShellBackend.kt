@@ -23,6 +23,10 @@ class SshShellBackend(
     private val upstream: List<ClientSession> = emptyList(),
     private val env: Map<String, String> = emptyMap(),
     private val agentForwarding: Boolean = false,
+    /** Typed into the shell as soon as it opens (a host's startup snippet). */
+    private val startupInput: String? = null,
+    /** The host's port forwards, running over [session]. */
+    val forwards: ForwardController? = null,
 ) : StreamBackend() {
 
     @Volatile
@@ -44,7 +48,15 @@ class SshShellBackend(
         return shell.invertedOut
     }
 
-    override fun openOutput(): OutputStream = channel?.invertedIn ?: throw IOException("Shell channel not open")
+    override fun openOutput(): OutputStream {
+        val out = channel?.invertedIn ?: throw IOException("Shell channel not open")
+        // Written before the terminal's own input, so it arrives first; the shell buffers it until its prompt.
+        startupInput?.let {
+            out.write(it.toByteArray(Charsets.UTF_8))
+            out.flush()
+        }
+        return out
+    }
 
     override fun describeEndOfStream(): String {
         val status = channel?.let {

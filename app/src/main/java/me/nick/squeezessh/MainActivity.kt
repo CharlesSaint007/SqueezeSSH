@@ -24,6 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import me.nick.squeezessh.data.ForwardEntity
 import me.nick.squeezessh.data.HostEntity
 import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
@@ -35,6 +36,7 @@ import me.nick.squeezessh.ui.hosts.HostEditScreen
 import me.nick.squeezessh.ui.hosts.HostsScreen
 import me.nick.squeezessh.ui.identities.IdentitiesScreen
 import me.nick.squeezessh.ui.keys.KeysScreen
+import me.nick.squeezessh.ui.snippets.SnippetsScreen
 import me.nick.squeezessh.ui.theme.BuiltInThemes
 import me.nick.squeezessh.ui.theme.SqueezeTheme
 
@@ -64,6 +66,7 @@ class MainActivity : ComponentActivity() {
             val identities by vault.identities.collectAsStateWithLifecycle(initialValue = emptyList())
             val keys by vault.keys.collectAsStateWithLifecycle(initialValue = emptyList())
             val syncStatus by bitwarden.status.collectAsStateWithLifecycle()
+            val snippets by vault.snippets.collectAsStateWithLifecycle(initialValue = emptyList())
 
             // A quick-connect target isn't saved, so it is handed to the connect screen in memory.
             var quickHost by remember { mutableStateOf<HostEntity?>(null) }
@@ -112,6 +115,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onIdentities = { nav.navigate("identities") },
                             onKeys = { nav.navigate("keys") },
+                            onSnippets = { nav.navigate("snippets") },
                             onSettings = { nav.navigate("settings") },
                         )
                     }
@@ -119,12 +123,17 @@ class MainActivity : ComponentActivity() {
                         val id = backStack.arguments?.getString("id")
                         val existing = hosts.firstOrNull { it.id == id }
                         // Wait for the hosts list before showing an edit form, so it isn't filled in empty.
+                        val forwards by produceState<List<ForwardEntity>?>(null, id) {
+                            value = if (id == null || id == "new") emptyList() else vault.forwards(id)
+                        }
                         if (id == "new" || existing != null) {
                             HostEditScreen(
                                 existing = existing,
                                 allHosts = hosts,
                                 identities = identities,
-                                onSave = { host -> scope.launch { vault.saveHost(host) }; nav.back() },
+                                snippets = snippets,
+                                initialForwards = forwards,
+                                onSave = { host, fwds -> scope.launch { vault.saveHost(host, fwds) }; nav.back() },
                                 onDelete = { host -> scope.launch { vault.deleteHost(host) }; nav.back() },
                                 onManageIdentities = { nav.navigate("identities") },
                                 onBack = { nav.back() },
@@ -158,7 +167,9 @@ class MainActivity : ComponentActivity() {
                     composable("terminal/{id}") { backStack ->
                         val entry = backStack.arguments?.getString("id")?.let(sessions::get)
                         if (entry == null) {
-                            LaunchedEffect(Unit) { nav.back() }
+                            // The session is gone (closed from its notification, or it ended). Leave, unless this
+                            // screen is already on its way out and something else has taken its place.
+                            LaunchedEffect(Unit) { if (nav.currentBackStackEntry?.id == backStack.id) nav.back() }
                         } else {
                             TerminalScreen(
                                 entry = entry,
@@ -166,11 +177,15 @@ class MainActivity : ComponentActivity() {
                                 fontSizeSp = settings.fontSizeSp,
                                 onFontSizeChange = { sp -> scope.launch { repo.setFontSize(sp) } },
                                 volumeKeysFontSize = settings.volumeKeysFontSize,
+                                snippets = snippets,
+                                onManageSnippets = { nav.navigate("snippets") },
                                 exitBehavior = settings.exitBehavior,
                                 onRememberExitBehavior = { b -> scope.launch { repo.setExitBehavior(b) } },
                                 onLeave = { keepRunning ->
                                     if (!keepRunning) sessions.close(entry.id)
-                                    nav.back()
+                                    // Back, the exit dialog and the session ending can all ask to leave; only
+                                    // the first one may pop, or a second pop would take the host list too.
+                                    if (nav.currentBackStackEntry?.id == backStack.id) nav.back()
                                 },
                             )
                         }
@@ -192,6 +207,14 @@ class MainActivity : ComponentActivity() {
                             bitwarden = bitwarden,
                             syncStatus = syncStatus,
                             onOpenBitwarden = { nav.navigate("bitwarden") },
+                            onBack = { nav.back() },
+                        )
+                    }
+                    composable("snippets") {
+                        SnippetsScreen(
+                            snippets = snippets,
+                            onSave = { sn -> scope.launch { vault.saveSnippet(sn) } },
+                            onDelete = { sn -> scope.launch { vault.deleteSnippet(sn) } },
                             onBack = { nav.back() },
                         )
                     }

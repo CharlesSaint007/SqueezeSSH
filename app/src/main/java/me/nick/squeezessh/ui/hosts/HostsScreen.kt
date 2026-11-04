@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
@@ -83,6 +84,7 @@ fun HostsScreen(
     onLocalShell: () -> Unit,
     onIdentities: () -> Unit,
     onKeys: () -> Unit,
+    onSnippets: () -> Unit,
     onSettings: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -120,6 +122,11 @@ fun HostsScreen(
                             text = { Text("Keys") },
                             leadingIcon = { Icon(Icons.Filled.Key, null) },
                             onClick = { menuOpen = false; onKeys() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Snippets") },
+                            leadingIcon = { Icon(Icons.Filled.Code, null) },
+                            onClick = { menuOpen = false; onSnippets() },
                         )
                         DropdownMenuItem(
                             text = { Text("Settings") },

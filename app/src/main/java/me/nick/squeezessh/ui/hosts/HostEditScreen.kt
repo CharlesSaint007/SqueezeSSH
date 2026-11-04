@@ -31,18 +31,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import me.nick.squeezessh.data.ForwardEntity
 import me.nick.squeezessh.data.HostEntity
 import me.nick.squeezessh.data.IdentityEntity
+import me.nick.squeezessh.data.SnippetEntity
 import me.nick.squeezessh.ui.common.BackTopBar
 import me.nick.squeezessh.ui.common.PickerField
 import me.nick.squeezessh.ui.theme.BuiltInThemes
+import java.util.UUID
 
 @Composable
 fun HostEditScreen(
     existing: HostEntity?,
     allHosts: List<HostEntity>,
     identities: List<IdentityEntity>,
-    onSave: (HostEntity) -> Unit,
+    snippets: List<SnippetEntity>,
+    /** The host's saved forwards; null while they are still loading. */
+    initialForwards: List<ForwardEntity>?,
+    onSave: (HostEntity, List<ForwardEntity>) -> Unit,
     onDelete: (HostEntity) -> Unit,
     onManageIdentities: () -> Unit,
     onBack: () -> Unit,
@@ -57,7 +63,11 @@ fun HostEditScreen(
     var themeId by remember { mutableStateOf(existing?.themeId) }
     var keepalive by remember { mutableStateOf((existing?.keepaliveSeconds ?: 30).toString()) }
     var agentForwarding by remember { mutableStateOf(existing?.agentForwarding ?: false) }
+    var startupSnippetId by remember { mutableStateOf(existing?.startupSnippetId) }
     var confirmDelete by remember { mutableStateOf(false) }
+    // A new host gets its ID up front so forwards added before the first save can point at it.
+    val hostId = remember { existing?.id ?: UUID.randomUUID().toString() }
+    var forwards by remember(initialForwards) { mutableStateOf(initialForwards.orEmpty()) }
 
     val portNumber = port.toIntOrNull()
     val valid = address.isNotBlank() && portNumber != null && portNumber in 1..65535
@@ -167,6 +177,16 @@ fun HostEditScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
             )
+            PickerField(
+                label = "Startup snippet",
+                selected = snippets.firstOrNull { it.id == startupSnippetId },
+                options = snippets,
+                optionLabel = { it.name },
+                noneLabel = "None",
+                onSelect = { startupSnippetId = it?.id },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            ForwardsEditor(forwards = forwards, hostId = hostId, onChange = { forwards = it })
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Agent forwarding", style = MaterialTheme.typography.bodyLarge)
@@ -180,9 +200,9 @@ fun HostEditScreen(
             }
 
             Button(
-                enabled = valid,
+                enabled = valid && initialForwards != null,
                 onClick = {
-                    val base = existing ?: HostEntity(nickname = "", address = "")
+                    val base = existing ?: HostEntity(id = hostId, nickname = "", address = "")
                     onSave(
                         base.copy(
                             nickname = nickname.ifBlank { address },
@@ -195,7 +215,9 @@ fun HostEditScreen(
                             themeId = themeId,
                             keepaliveSeconds = keepalive.toIntOrNull() ?: 30,
                             agentForwarding = agentForwarding,
+                            startupSnippetId = startupSnippetId,
                         ),
+                        forwards,
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),

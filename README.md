@@ -21,10 +21,24 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 2. ✅ Terminal emulator + local shell + theme switching
 3. ✅ SSH core: hosts, identities, key generation/import, known hosts, jump hosts
 4. ✅ Background sessions and notifications
-5. Port forwarding + snippets
+5. ✅ Port forwarding + snippets
 6. ✅ Bitwarden / Vaultwarden sync
 7. Export / import
 8. Polish, then the first `v0.1.0` release
+
+## Port forwarding and snippets
+
+Each host can have port forwards, set up in the host's settings:
+
+- **Local** (`-L`): a port on the phone that reaches a destination through the server.
+- **Remote** (`-R`): a port on the server that reaches a destination through the phone.
+- **SOCKS** (`-D`): a SOCKS5 proxy on the phone. Point an app (e.g. Firefox) at `127.0.0.1:<port>` to browse from the server.
+
+Forwards listen on `127.0.0.1` unless you allow other devices. They start when the host connects (or from the
+session with **FN → PORTS**, which also shows each forward's status and errors), and stop when it disconnects.
+
+**Snippets** (*⋮ → Snippets*) are saved commands. In a session, **FN → SNIP** types one in. A host can also run
+a *startup snippet* when it connects.
 
 ## Bitwarden / Vaultwarden sync
 

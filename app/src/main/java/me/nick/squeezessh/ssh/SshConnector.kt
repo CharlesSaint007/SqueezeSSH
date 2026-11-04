@@ -14,6 +14,7 @@ import org.apache.sshd.common.session.Session
 import org.apache.sshd.common.session.SessionListener
 import org.apache.sshd.common.util.net.SshdSocketAddress
 import org.apache.sshd.core.CoreModuleProperties
+import org.apache.sshd.server.forward.AcceptAllForwardingFilter
 import java.io.IOException
 import java.security.KeyPair
 import java.security.PublicKey
@@ -51,6 +52,10 @@ class SshConnector(private val hostKeys: HostKeyVerifier) {
     private val client: SshClient = SshClient.setUpDefaultClient().apply {
         // Host keys are verified per connection in [verifyHostKey]; this fallback rejects anything else.
         serverKeyVerifier = ServerKeyVerifier { _, _, _ -> false }
+        // MINA's client refuses the server's "forwarded-tcpip" channels by default, which silently breaks -R
+        // forwards. The server only opens them for remote forwards this app asked for, and each one goes to the
+        // destination saved with that forward, so accept them.
+        forwardingFilter = AcceptAllForwardingFilter.INSTANCE
         // Log why sessions end; a dropped connection is otherwise silent.
         addSessionListener(object : SessionListener {
             override fun sessionException(session: Session, t: Throwable) {

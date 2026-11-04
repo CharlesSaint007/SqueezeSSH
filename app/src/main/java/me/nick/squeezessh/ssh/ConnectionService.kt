@@ -27,11 +27,18 @@ class ConnectionService(private val vault: Vault, private val connector: SshConn
             }
             vault.markConnected(host.id)
             val session = opened.last()
+            val forwards = vault.forwards(host.id).takeIf { it.isNotEmpty() }?.let { ForwardController(session, it) }
+            // A forward that can't start (port in use, refused by the server) doesn't stop the shell; the
+            // session's forwards list shows the error.
+            forwards?.startAutomatic()
+            val snippet = host.startupSnippetId?.let { vault.snippet(it) }
             return SshShellBackend(
                 session = session,
                 upstream = opened.dropLast(1).reversed(),
                 env = mapOf("COLORTERM" to "truecolor"),
                 agentForwarding = host.agentForwarding,
+                startupInput = snippet?.let(SnippetText::of),
+                forwards = forwards,
             )
         } catch (e: Exception) {
             opened.reversed().forEach { it.close(true) }

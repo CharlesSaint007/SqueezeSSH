@@ -45,6 +45,8 @@ data class HostEntity(
     val keepaliveSeconds: Int = 30,
     val agentForwarding: Boolean = false,
     val compression: Boolean = false,
+    /** A snippet typed into the shell once it is ready. */
+    val startupSnippetId: String? = null,
     val lastConnectedAt: Long? = null,
     val connectCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
@@ -112,4 +114,62 @@ data class KnownHostEntity(
     /** The full public key, base64 of the SSH wire encoding. */
     val publicKey: String,
     val addedAt: Long = System.currentTimeMillis(),
+)
+
+enum class ForwardType {
+    /** `-L`: a port on this phone, tunnelled to a destination reached from the server. */
+    Local,
+
+    /** `-R`: a port on the server, tunnelled back to a destination reached from this phone. */
+    Remote,
+
+    /** `-D`: a SOCKS proxy on this phone; each connection's destination is reached from the server. */
+    Dynamic,
+}
+
+/** A port forward saved on a host; removed with the host. */
+@Entity(
+    tableName = "forwards",
+    foreignKeys = [
+        ForeignKey(entity = HostEntity::class, parentColumns = ["id"], childColumns = ["hostId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("hostId")],
+)
+data class ForwardEntity(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val hostId: String,
+    val type: ForwardType,
+    /** Where the listening port is opened: on the phone for Local/Dynamic, on the server for Remote. */
+    val bindAddress: String = LOOPBACK,
+    val bindPort: Int,
+    /** Where connections go; unused for Dynamic. */
+    val destHost: String? = null,
+    val destPort: Int? = null,
+    /** Start with the connection; otherwise it is started from the session's forwards list. */
+    val autoStart: Boolean = true,
+) {
+    /** OpenSSH-style summary, e.g. `L 8080 → db.internal:5432`. */
+    val summary: String
+        get() {
+            val bind = if (bindAddress == LOOPBACK || bindAddress.isBlank()) "$bindPort" else "$bindAddress:$bindPort"
+            return when (type) {
+                ForwardType.Local -> "L $bind → $destHost:$destPort"
+                ForwardType.Remote -> "R $bind → $destHost:$destPort"
+                ForwardType.Dynamic -> "D $bind (SOCKS)"
+            }
+        }
+
+    companion object {
+        const val LOOPBACK = "127.0.0.1"
+    }
+}
+
+/** A saved piece of text to type into a session. */
+@Entity(tableName = "snippets")
+data class SnippetEntity(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val text: String,
+    /** Press Enter after the text, so it runs as a command. */
+    val sendEnter: Boolean = true,
 )
