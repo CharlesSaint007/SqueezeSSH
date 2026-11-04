@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
             val keys by vault.keys.collectAsStateWithLifecycle(initialValue = emptyList())
             val syncStatus by bitwarden.status.collectAsStateWithLifecycle()
             val snippets by vault.snippets.collectAsStateWithLifecycle(initialValue = emptyList())
+            val knownHostCount by vault.knownHostCount.collectAsStateWithLifecycle(initialValue = 0)
 
             // A quick-connect target isn't saved, so it is handed to the connect screen in memory.
             var quickHost by remember { mutableStateOf<HostEntity?>(null) }
@@ -321,6 +322,8 @@ class MainActivity : ComponentActivity() {
                             onAutoReconnect = { on -> scope.launch { repo.setAutoReconnect(on) } },
                             onBitwarden = { nav.navigate("bitwarden") },
                             onBackup = { nav.navigate("backup") },
+                            knownHostCount = knownHostCount,
+                            onClearKnownHosts = { scope.launch { vault.clearKnownHosts() } },
                             onEditTheme = { id -> nav.navigate("theme/$id") },
                             onBack = { nav.back() },
                         )
