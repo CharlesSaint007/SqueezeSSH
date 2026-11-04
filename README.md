@@ -32,8 +32,8 @@ Every build is published to [GitHub Releases](../../releases). Add the repo URL 
 
 | Channel | App ID | Obtainium settings |
 |---|---|---|
-| Stable | `me.nickreed.squeezessh` | Include prereleases **off**. APK filter: `^squeezessh-\d.*\.apk$` |
-| Dev | `me.nickreed.squeezessh.dev` | Include prereleases **on**. APK filter: `^squeezessh-dev-.*\.apk$` |
+| Stable | `me.nick.squeezessh` | Include prereleases **off**. APK filter: `^squeezessh-\d.*\.apk$` |
+| Dev | `me.nick.squeezessh.dev` | Include prereleases **on**. APK filter: `^squeezessh-dev-.*\.apk$` |
 
 The two channels have different app IDs, so they install side by side.
 

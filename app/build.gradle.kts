@@ -12,11 +12,11 @@ fun signingValue(name: String): String? =
     System.getenv(name) ?: providers.gradleProperty(name).orNull
 
 android {
-    namespace = "me.nickreed.squeezessh"
+    namespace = "me.nick.squeezessh"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "me.nickreed.squeezessh"
+        applicationId = "me.nick.squeezessh"
         minSdk = 26
         targetSdk = 36
         versionCode = ciRunNumber ?: 1

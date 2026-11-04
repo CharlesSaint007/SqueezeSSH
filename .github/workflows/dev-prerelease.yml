@@ -57,7 +57,7 @@ jobs:
           prerelease: true
           body: |
             Automated dev build from `${{ github.sha }}`.
-            Installs as **SqueezeSSH Dev** (`me.nickreed.squeezessh.dev`), side by side with stable.
+            Installs as **SqueezeSSH Dev** (`me.nick.squeezessh.dev`), side by side with stable.
           files: squeezessh-dev-*.apk
 
       - name: Prune old dev pre-releases (keep 10)

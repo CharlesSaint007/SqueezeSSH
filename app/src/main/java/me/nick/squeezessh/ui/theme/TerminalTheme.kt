@@ -1,4 +1,4 @@
-package me.nickreed.squeezessh.ui.theme
+package me.nick.squeezessh.ui.theme
 
 /**
  * A terminal color palette. Colors are ARGB ints so this class stays free of Compose and can be

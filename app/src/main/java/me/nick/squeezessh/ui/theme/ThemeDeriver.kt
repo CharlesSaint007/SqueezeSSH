@@ -1,8 +1,8 @@
-package me.nickreed.squeezessh.ui.theme
+package me.nick.squeezessh.ui.theme
 
-import me.nickreed.squeezessh.ui.theme.ColorMath.blend
-import me.nickreed.squeezessh.ui.theme.ColorMath.isDark
-import me.nickreed.squeezessh.ui.theme.ColorMath.onColor
+import me.nick.squeezessh.ui.theme.ColorMath.blend
+import me.nick.squeezessh.ui.theme.ColorMath.isDark
+import me.nick.squeezessh.ui.theme.ColorMath.onColor
 
 /**
  * The app-UI palette derived from a [TerminalTheme], as plain ARGB ints. [SqueezeTheme] turns it

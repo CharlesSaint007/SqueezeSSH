@@ -1,4 +1,4 @@
-package me.nickreed.squeezessh.ui.theme
+package me.nick.squeezessh.ui.theme
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme

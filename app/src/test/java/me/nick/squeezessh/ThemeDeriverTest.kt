@@ -1,8 +1,8 @@
-package me.nickreed.squeezessh
+package me.nick.squeezessh
 
-import me.nickreed.squeezessh.ui.theme.BuiltInThemes
-import me.nickreed.squeezessh.ui.theme.ColorMath
-import me.nickreed.squeezessh.ui.theme.ThemeDeriver
+import me.nick.squeezessh.ui.theme.BuiltInThemes
+import me.nick.squeezessh.ui.theme.ColorMath
+import me.nick.squeezessh.ui.theme.ThemeDeriver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

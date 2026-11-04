@@ -1,4 +1,4 @@
-package me.nickreed.squeezessh
+package me.nick.squeezessh
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -38,9 +38,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import me.nickreed.squeezessh.ui.theme.BuiltInThemes
-import me.nickreed.squeezessh.ui.theme.SqueezeTheme
-import me.nickreed.squeezessh.ui.theme.TerminalTheme
+import me.nick.squeezessh.ui.theme.BuiltInThemes
+import me.nick.squeezessh.ui.theme.SqueezeTheme
+import me.nick.squeezessh.ui.theme.TerminalTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
