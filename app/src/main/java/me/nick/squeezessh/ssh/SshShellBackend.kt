@@ -58,11 +58,28 @@ class SshShellBackend(
         return out
     }
 
+    /**
+     * True once the shell has ended without the remote shell exiting or the user disconnecting: the network
+     * went away or the server dropped the connection. Those sessions can be reconnected.
+     */
+    @Volatile
+    var droppedUnexpectedly = false
+        private set
+
+    @Volatile
+    private var closedByUser = false
+
+    override fun onConnectionLost(e: IOException) {
+        if (!closedByUser) droppedUnexpectedly = true
+    }
+
     override fun describeEndOfStream(): String {
         val status = channel?.let {
             it.waitFor(EnumSet.of(ClientChannelEvent.EXIT_STATUS), Duration.ofSeconds(1))
             it.exitStatus
         }
+        // A shell that exits on its own sends an exit status; a dropped connection doesn't.
+        if (status == null && !closedByUser) droppedUnexpectedly = true
         Log.i(TAG, "Shell ended (exit status $status, session open: ${session.isOpen})")
         return if (status != null && status != 0) "Connection closed (exit status $status)" else "Connection closed"
     }
@@ -75,16 +92,24 @@ class SshShellBackend(
      */
     override fun resize(columns: Int, rows: Int, cellWidthPixels: Int, cellHeightPixels: Int) {
         val shell = channel ?: return
-        resizeExecutor.execute {
-            try {
-                shell.sendWindowChange(columns, rows, columns * cellWidthPixels, rows * cellHeightPixels)
-            } catch (_: IOException) {
-                // The channel is going away; the reader thread will report it.
+        // The view keeps resizing (keyboard hidden, rotation, screen left) after the connection has ended and
+        // the executor is shut down; there's nothing to tell the server then, and submitting would throw.
+        if (resizeExecutor.isShutdown || !shell.isOpen) return
+        try {
+            resizeExecutor.execute {
+                try {
+                    shell.sendWindowChange(columns, rows, columns * cellWidthPixels, rows * cellHeightPixels)
+                } catch (_: IOException) {
+                    // The channel is going away; the reader thread will report it.
+                }
             }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Shut down between the check and the submit: the session just closed.
         }
     }
 
     override fun terminate() {
+        closedByUser = true
         close()
         finish(0, "Disconnected")
     }

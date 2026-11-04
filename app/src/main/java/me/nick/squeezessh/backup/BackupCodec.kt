@@ -101,6 +101,8 @@ data class SettingsBackup(
     val exitBehavior: String? = null,
     val keepAwake: Boolean? = null,
     val volumeKeysFontSize: Boolean? = null,
+    val autoReconnect: Boolean? = null,
+    val customThemes: List<me.nick.squeezessh.ui.theme.CustomThemeJson>? = null,
 )
 
 /** The decrypted contents of [BackupFile.secrets]. */

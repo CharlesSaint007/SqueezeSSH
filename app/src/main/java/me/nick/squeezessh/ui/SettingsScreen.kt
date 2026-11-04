@@ -1,7 +1,9 @@
 package me.nick.squeezessh.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,6 +34,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -42,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import me.nick.squeezessh.settings.ExitBehavior
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.settings.UiThemeMode
-import me.nick.squeezessh.ui.theme.BuiltInThemes
 import me.nick.squeezessh.ui.theme.TerminalTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,8 +59,11 @@ fun SettingsScreen(
     onExitBehavior: (ExitBehavior) -> Unit,
     onKeepAwake: (Boolean) -> Unit,
     onVolumeKeysFontSize: (Boolean) -> Unit,
+    onAutoReconnect: (Boolean) -> Unit,
     onBitwarden: () -> Unit,
     onBackup: () -> Unit,
+    /** Open the theme editor on [id]: a custom theme to edit, or any theme to copy. */
+    onEditTheme: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -100,9 +106,27 @@ fun SettingsScreen(
                     }
                 }
             }
-            item { SectionTitle("Terminal theme") }
-            items(BuiltInThemes.all, key = { "term-" + it.id }) { theme ->
-                ThemeRow(theme, selected = theme.id == settings.terminalThemeId, onClick = { onTerminalTheme(theme.id) })
+            item {
+                SectionTitle("Terminal theme")
+                Text(
+                    "Long-press a theme to edit it (built-in themes are copied first).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            items(settings.themes.all, key = { "term-" + it.id }) { theme ->
+                ThemeRow(
+                    theme,
+                    selected = theme.id == settings.terminalThemeId,
+                    onClick = { onTerminalTheme(theme.id) },
+                    onLongClick = { onEditTheme(theme.id) },
+                )
+            }
+            item {
+                TextButton(onClick = { onEditTheme(settings.terminalThemeId) }) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Text("New theme from the current one")
+                }
             }
 
             item {
@@ -125,7 +149,7 @@ fun SettingsScreen(
                 }
             }
             if (settings.uiThemeMode == UiThemeMode.Separate) {
-                items(BuiltInThemes.all, key = { "ui-" + it.id }) { theme ->
+                items(settings.themes.all, key = { "ui-" + it.id }) { theme ->
                     ThemeRow(theme, selected = theme.id == settings.uiThemeId, onClick = { onUiTheme(theme.id) })
                 }
             }
@@ -182,6 +206,22 @@ fun SettingsScreen(
             }
             item {
                 Row(
+                    Modifier.fillMaxWidth().clickable { onAutoReconnect(!settings.autoReconnect) }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Reconnect automatically", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "When a connection drops while you're looking at it, connect again. Off: ask first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = settings.autoReconnect, onCheckedChange = onAutoReconnect)
+                }
+            }
+            item {
+                Row(
                     Modifier.fillMaxWidth().clickable { onKeepAwake(!settings.keepAwake) }.padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -206,9 +246,10 @@ private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ThemeRow(theme: TerminalTheme, selected: Boolean, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+private fun ThemeRow(theme: TerminalTheme, selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+    Card(modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = selected, onClick = onClick)
             Spacer(Modifier.width(8.dp))

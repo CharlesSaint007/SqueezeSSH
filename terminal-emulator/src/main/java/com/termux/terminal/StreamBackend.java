@@ -19,6 +19,13 @@ public abstract class StreamBackend implements TerminalBackend {
     /** The stream that user input is written to; called once, after {@link #openInput}. */
     protected abstract OutputStream openOutput() throws IOException;
 
+    /**
+     * Called when reading fails with an I/O error (the connection broke rather than closing cleanly). The default
+     * does nothing; subclasses can record it.
+     */
+    protected void onConnectionLost(IOException e) {
+    }
+
     /** Called when the stream ends by itself; return the message to show, or null for the default. */
     protected String describeEndOfStream() {
         return "Connection closed";
@@ -49,6 +56,7 @@ public abstract class StreamBackend implements TerminalBackend {
                     }
                     finish(0, describeEndOfStream());
                 } catch (IOException e) {
+                    onConnectionLost(e);
                     finish(1, "Connection lost: " + e.getMessage());
                 }
             }
