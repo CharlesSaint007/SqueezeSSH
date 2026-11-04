@@ -1,5 +1,6 @@
 package me.nick.squeezessh.session
 
+import com.termux.terminal.TerminalBackend
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,8 +14,10 @@ class SessionEntry(
     val id: String,
     val label: String,
     val session: TerminalSession,
-    /** The theme this session was opened with; a per-host override later, the global default for now. */
+    /** The theme this session uses: the host's override, or the global theme. */
     var theme: TerminalTheme,
+    /** True when the host chose its own theme, so global theme changes leave this session alone. */
+    val themeOverridden: Boolean = false,
 )
 
 /**
@@ -31,14 +34,18 @@ class SessionManager {
      */
     val client = DelegatingSessionClient()
 
-    fun openLocalShell(theme: TerminalTheme): SessionEntry {
-        val session = TerminalSession(
-            LocalShell.backend(),
-            TRANSCRIPT_ROWS,
-            theme.toColorScheme(),
-            client,
+    fun openLocalShell(theme: TerminalTheme): SessionEntry = open("Local shell", LocalShell.backend(), theme)
+
+    /** Open a terminal on an already-connected backend, e.g. an [me.nick.squeezessh.ssh.SshShellBackend]. */
+    fun open(label: String, backend: TerminalBackend, theme: TerminalTheme, themeOverridden: Boolean = false): SessionEntry {
+        val session = TerminalSession(backend, TRANSCRIPT_ROWS, theme.toColorScheme(), client)
+        val entry = SessionEntry(
+            id = session.mHandle,
+            label = label,
+            session = session,
+            theme = theme,
+            themeOverridden = themeOverridden,
         )
-        val entry = SessionEntry(id = session.mHandle, label = "Local shell", session = session, theme = theme)
         _sessions.update { it + entry }
         return entry
     }
@@ -49,6 +56,7 @@ class SessionManager {
     fun applyTheme(theme: TerminalTheme) {
         val scheme = theme.toColorScheme()
         for (entry in _sessions.value) {
+            if (entry.themeOverridden) continue
             entry.theme = theme
             entry.session.setColorScheme(scheme)
         }
