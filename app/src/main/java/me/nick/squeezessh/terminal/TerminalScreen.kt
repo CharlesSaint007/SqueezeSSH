@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -167,8 +168,11 @@ fun TerminalScreen(
                     )
                     attachSession(entry.session)
                     // Focus can only be taken once the view is in the window; until then key presses would go
-                    // to whatever Compose focused first.
-                    post { requestFocus() }
+                    // to whatever Compose focused first. A live session opens with the keyboard up, ready to type.
+                    post {
+                        requestFocus()
+                        if (entry.session.isRunning) showKeyboardWhenFocused(this)
+                    }
                 }
             },
             update = { view ->
@@ -293,6 +297,24 @@ private fun pasteClipboard(context: Context, session: TerminalSession) {
 private fun showKeyboard(view: TerminalView) {
     view.requestFocus()
     view.context.getSystemService(InputMethodManager::class.java).showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+}
+
+/**
+ * Show the keyboard once the window has input focus. Asked for any earlier (as the screen opens, mid
+ * navigation transition), the input method ignores the request.
+ */
+private fun showKeyboardWhenFocused(view: TerminalView) {
+    if (view.hasWindowFocus()) {
+        showKeyboard(view)
+        return
+    }
+    view.viewTreeObserver.addOnWindowFocusChangeListener(object : ViewTreeObserver.OnWindowFocusChangeListener {
+        override fun onWindowFocusChanged(hasFocus: Boolean) {
+            if (!hasFocus) return
+            view.viewTreeObserver.removeOnWindowFocusChangeListener(this)
+            showKeyboard(view)
+        }
+    })
 }
 
 private fun hideKeyboard(view: TerminalView) {
