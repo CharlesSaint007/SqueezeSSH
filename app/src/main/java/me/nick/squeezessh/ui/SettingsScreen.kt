@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -37,6 +38,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +67,9 @@ fun SettingsScreen(
     onAutoReconnect: (Boolean) -> Unit,
     onBitwarden: () -> Unit,
     onBackup: () -> Unit,
+    /** How many hosts have a saved host key. */
+    knownHostCount: Int,
+    onClearKnownHosts: () -> Unit,
     /** Open the theme editor on [id]: a custom theme to edit, or any theme to copy. */
     onEditTheme: (String) -> Unit,
     onBack: () -> Unit,
@@ -104,6 +112,43 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+            }
+            item {
+                var confirmClear by remember { mutableStateOf(false) }
+                Card(Modifier.fillMaxWidth().clickable(enabled = knownHostCount > 0) { confirmClear = true }) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Clear known hosts", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            when (knownHostCount) {
+                                0 -> "No saved host keys"
+                                1 -> "1 host has a saved key"
+                                else -> "$knownHostCount hosts have a saved key"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (confirmClear) {
+                    AlertDialog(
+                        onDismissRequest = { confirmClear = false },
+                        title = { Text("Clear known hosts?") },
+                        text = {
+                            Text(
+                                "This forgets the saved host key of ${if (knownHostCount == 1) "1 host" else "all $knownHostCount hosts"}. " +
+                                    "The next time you connect to each one, you'll be shown its key fingerprint and asked to accept " +
+                                    "or reject it again. Check it against the server's real fingerprint, because a changed key can " +
+                                    "mean someone is intercepting the connection.\n\nYour hosts, identities and keys are not affected.",
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { confirmClear = false; onClearKnownHosts() }) {
+                                Text("Clear", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+                    )
                 }
             }
             item {

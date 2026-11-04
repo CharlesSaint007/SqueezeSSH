@@ -92,6 +92,10 @@ interface KnownHostDao {
     @Query("SELECT * FROM known_hosts")
     suspend fun getAll(): List<KnownHostEntity>
 
+    /** How many distinct hosts have a saved key (a host with several key types counts once). */
+    @Query("SELECT COUNT(DISTINCT hostPort) FROM known_hosts")
+    fun observeHostCount(): Flow<Int>
+
     @Upsert
     suspend fun upsertAll(entries: List<KnownHostEntity>)
 
