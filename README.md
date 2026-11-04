@@ -50,7 +50,8 @@ Each host can have port forwards, set up in the host's settings:
 Forwards listen on `127.0.0.1` unless you allow other devices. They start when the host connects (or from the
 session with **FN → PORTS**, which also shows each forward's status and errors), and stop when it disconnects.
 
-**Snippets** (*⋮ → Snippets*) are saved commands. In a session, **FN → SNIP** types one in. A host can also run
+**Snippets** (*⋮ → Snippets*) are saved commands. In a session, **long-press the terminal** or use **FN → SNIP**
+to type one in. (Long-press used to start text selection; that's now *Select text to copy* in the same list.) A host can also run
 a *startup snippet* when it connects.
 
 ## Backup and moving to a new phone
@@ -58,8 +59,10 @@ a *startup snippet* when it connects.
 **Settings → Backup & restore** exports hosts, identities, keys (public halves and Bitwarden links), port
 forwards, snippets, known hosts and settings to a `.squeezessh.json` file through the system file picker.
 
-- *Include passwords and private keys* adds them to the file, encrypted with a passphrase you choose
-  (Argon2id + AES-256-GCM). Without it the file holds no secrets at all.
+- The whole file is always encrypted with a passphrase you choose (Argon2id + AES-256-GCM), so even host names
+  and addresses aren't readable without it.
+- *Include passwords and private keys* adds those too, inside the same encryption.
+- Backups made by earlier versions (unencrypted, with only the secrets encrypted) still import.
 - **Import** offers *Merge* (add to what's here; items with the same ID are updated) or *Replace* (delete
   everything first).
 - **New phone:** install, import the backup, then sign in to Bitwarden sync. Keys restored without their

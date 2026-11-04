@@ -31,7 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.nick.squeezessh.data.SnippetEntity
@@ -62,16 +66,7 @@ fun SnippetsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (snippets.isEmpty()) {
-                item {
-                    Text(
-                        "Snippets are commands you can type into a session with one tap (FN → SNIP), or run when " +
-                            "a host connects.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            item { SnippetHelp() }
             items(snippets, key = { it.id }) { snippet ->
                 Card(Modifier.fillMaxWidth().clickable { editing = snippet }) {
                     SnippetListItem(snippet)
@@ -87,6 +82,31 @@ fun SnippetsScreen(
             onDelete = editing?.let { e -> { onDelete(e); editing = null } },
             onDismiss = { creating = false; editing = null },
         )
+    }
+}
+
+/** How snippets get used, shown above the list. */
+@Composable
+private fun SnippetHelp() {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Using snippets", style = MaterialTheme.typography.titleSmall)
+            for ((how, what) in listOf(
+                "Long-press the terminal" to "opens the snippet list; tap one to type it in. The list also has Select text, for copying.",
+                "FN → SNIP" to "on the key bar opens the same list.",
+                "Startup snippet" to "in a host's settings types one in as soon as that host connects.",
+                "Press Enter after it" to "runs the snippet as a command; turn it off to just type the text.",
+            )) {
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(how) }
+                        append(": $what")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

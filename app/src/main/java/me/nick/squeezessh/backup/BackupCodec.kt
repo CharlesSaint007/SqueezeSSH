@@ -13,9 +13,11 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * The `.squeezessh.json` backup file. Its own types rather than the Room entities, so the file format stays
- * put when the database schema changes. Everything except [secrets] is plain JSON; [secrets] is present only
- * when the user chose to include passwords and private keys, and is encrypted with their passphrase.
+ * The contents of a backup. Its own types rather than the Room entities, so the format stays put when the
+ * database schema changes. Files are written as an [EncryptedBackup] wrapping this as JSON, so nothing in it
+ * is readable without the passphrase; [includedSecrets] holds passwords and private keys when the user chose
+ * to include them. Older files were this document in the clear, with the secrets in [secrets] encrypted on
+ * their own; those still import.
  */
 @Serializable
 data class BackupFile(
@@ -30,7 +32,10 @@ data class BackupFile(
     val snippets: List<SnippetBackup> = emptyList(),
     val knownHosts: List<KnownHostBackup> = emptyList(),
     val settings: SettingsBackup? = null,
+    /** Legacy (unencrypted files only): the secrets, encrypted separately with the passphrase. */
     val secrets: EncryptedSecrets? = null,
+    /** Passwords and private keys, when included; only ever written inside an [EncryptedBackup]. */
+    val includedSecrets: Secrets? = null,
 ) {
     companion object {
         const val FORMAT = "squeezessh-backup"
@@ -114,7 +119,29 @@ data class Secrets(
     val privateKeys: Map<String, String> = emptyMap(),
 )
 
-/** Argon2id-derived AES-256-GCM encryption of a [Secrets] JSON document. */
+/** What's on disk: a whole [BackupFile], encrypted with Argon2id + AES-256-GCM under the user's passphrase. */
+@Serializable
+data class EncryptedBackup(
+    val format: String = FORMAT,
+    val version: Int = 1,
+    val exportedAt: Long,
+    val sealed: EncryptedSecrets,
+) {
+    companion object {
+        const val FORMAT = "squeezessh-backup-encrypted"
+    }
+}
+
+/** A backup file as read from disk, before any passphrase is entered. */
+sealed class ReadBackup {
+    /** The current format: nothing can be shown until it is unlocked. */
+    data class Locked(val file: EncryptedBackup) : ReadBackup()
+
+    /** An older, unencrypted file (its secrets, if any, still need the passphrase). */
+    data class Plain(val file: BackupFile) : ReadBackup()
+}
+
+/** Argon2id-derived AES-256-GCM encryption of a JSON document (a whole backup, or legacy secrets). */
 @Serializable
 data class EncryptedSecrets(
     val kdf: String = "argon2id",
@@ -142,8 +169,9 @@ object BackupCodec {
     private val b64 = Base64.getEncoder()
     private val unb64 = Base64.getDecoder()
 
-    /** Bound into the ciphertext so the secrets blob can't be moved into a different kind of file. */
+    /** Bound into the ciphertext so an encrypted blob can't be moved into a different kind of file. */
     private val AAD = "squeezessh-backup-v1".toByteArray()
+    private val FILE_AAD = "squeezessh-backup-file-v1".toByteArray()
 
     /** OWASP's first recommended Argon2id setting: 3 passes over 64 MiB, 4 lanes. */
     data class KdfParams(val iterations: Int = 3, val memoryKiB: Int = 64 * 1024, val parallelism: Int = 4)
@@ -163,15 +191,56 @@ object BackupCodec {
         return file
     }
 
-    fun seal(secrets: Secrets, passphrase: String, params: KdfParams = KdfParams()): EncryptedSecrets {
+    /** Encrypt [file] as a whole under [passphrase]: the format every export now uses. */
+    fun encodeEncrypted(file: BackupFile, passphrase: String, params: KdfParams = KdfParams()): String {
+        val plain = json.encodeToString(BackupFile.serializer(), file).toByteArray(Charsets.UTF_8)
+        val envelope = EncryptedBackup(exportedAt = file.exportedAt, sealed = sealBytes(plain, passphrase, params, FILE_AAD))
+        return json.encodeToString(EncryptedBackup.serializer(), envelope)
+    }
+
+    /** Recognise a backup file without unlocking it. */
+    fun read(text: String): ReadBackup {
+        val obj = runCatching { json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject }.getOrNull()
+            ?: throw BackupFormatException("Not a SqueezeSSH backup file")
+        val format = (obj["format"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        return when (format) {
+            EncryptedBackup.FORMAT -> {
+                val envelope = try {
+                    json.decodeFromString(EncryptedBackup.serializer(), text)
+                } catch (e: Exception) {
+                    throw BackupFormatException("This backup file is damaged", e)
+                }
+                if (envelope.version > 1) {
+                    throw BackupFormatException("This backup is from a newer version of SqueezeSSH; update the app to import it")
+                }
+                ReadBackup.Locked(envelope)
+            }
+            BackupFile.FORMAT -> ReadBackup.Plain(decode(text))
+            else -> throw BackupFormatException("Not a SqueezeSSH backup file")
+        }
+    }
+
+    /** Unlock an encrypted backup; throws [WrongPassphraseException] for the wrong passphrase. */
+    fun decrypt(envelope: EncryptedBackup, passphrase: String): BackupFile =
+        decode(openBytes(envelope.sealed, passphrase, FILE_AAD).toString(Charsets.UTF_8))
+
+    /** Legacy: encrypt just the secrets, as files made before whole-file encryption did. */
+    fun seal(secrets: Secrets, passphrase: String, params: KdfParams = KdfParams()): EncryptedSecrets =
+        sealBytes(json.encodeToString(Secrets.serializer(), secrets).toByteArray(Charsets.UTF_8), passphrase, params, AAD)
+
+    fun open(sealed: EncryptedSecrets, passphrase: String): Secrets =
+        json.decodeFromString(Secrets.serializer(), openBytes(sealed, passphrase, AAD).toString(Charsets.UTF_8))
+
+    private fun sealBytes(plain: ByteArray, passphrase: String, params: KdfParams, aad: ByteArray): EncryptedSecrets {
         val salt = ByteArray(16).also(random::nextBytes)
         val nonce = ByteArray(12).also(random::nextBytes)
         val key = deriveKey(passphrase, salt, params.iterations, params.memoryKiB, params.parallelism)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
-        cipher.updateAAD(AAD)
-        val ct = cipher.doFinal(json.encodeToString(Secrets.serializer(), secrets).toByteArray(Charsets.UTF_8))
+        cipher.updateAAD(aad)
+        val ct = cipher.doFinal(plain)
         key.fill(0)
+        plain.fill(0)
         return EncryptedSecrets(
             iterations = params.iterations,
             memoryKiB = params.memoryKiB,
@@ -182,7 +251,7 @@ object BackupCodec {
         )
     }
 
-    fun open(sealed: EncryptedSecrets, passphrase: String): Secrets {
+    private fun openBytes(sealed: EncryptedSecrets, passphrase: String, aad: ByteArray): ByteArray {
         if (sealed.kdf != "argon2id" || sealed.cipher != "aes-256-gcm") {
             throw BackupFormatException("Unsupported encryption in this backup (${sealed.kdf}/${sealed.cipher})")
         }
@@ -191,17 +260,16 @@ object BackupCodec {
             throw BackupFormatException("The backup's key settings are out of range")
         }
         val key = deriveKey(passphrase, unb64.decode(sealed.salt), sealed.iterations, sealed.memoryKiB, sealed.parallelism)
-        val plain = try {
+        return try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, unb64.decode(sealed.nonce)))
-            cipher.updateAAD(AAD)
+            cipher.updateAAD(aad)
             cipher.doFinal(unb64.decode(sealed.ciphertext))
         } catch (e: AEADBadTagException) {
             throw WrongPassphraseException()
         } finally {
             key.fill(0)
         }
-        return json.decodeFromString(Secrets.serializer(), plain.toString(Charsets.UTF_8))
     }
 
     private fun deriveKey(passphrase: String, salt: ByteArray, iterations: Int, memoryKiB: Int, parallelism: Int): ByteArray {
