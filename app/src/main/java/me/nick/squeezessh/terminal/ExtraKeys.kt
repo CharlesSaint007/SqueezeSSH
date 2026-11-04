@@ -183,4 +183,5 @@ private fun RowScope.KeyCell(onClick: () -> Unit, content: @Composable () -> Uni
     ) { content() }
 }
 
-private val KEY_HEIGHT = 42.dp
+/** Two rows come to about 70dp, close to the key bars of other terminal apps. */
+private val KEY_HEIGHT = 35.dp

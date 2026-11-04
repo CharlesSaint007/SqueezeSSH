@@ -3,6 +3,9 @@ package me.nick.squeezessh.session
 import com.termux.terminal.TerminalBackend
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import me.nick.squeezessh.ssh.ForwardController
@@ -23,6 +26,9 @@ class SessionEntry(
     val forwards: ForwardController? = null,
 ) {
     val startedAt: Long = System.currentTimeMillis()
+
+    /** Whether the key bar is shown; tapping the terminal toggles it, and each session remembers its own. */
+    var keyBarVisible by mutableStateOf(true)
 
     fun info() = SessionInfo(id, label, session.title, session.isRunning, startedAt)
 }
