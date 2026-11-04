@@ -95,12 +95,19 @@ Sessions survive the app being backgrounded or swiped from Recents. Some phones 
 
 ## Installing with Obtainium
 
-Every build is published to [GitHub Releases](../../releases). Add the repo URL `https://github.com/CharlesSaint007/SqueezeSSH` to Obtainium once for each channel:
+Every build is published to [GitHub Releases](../../releases).
+
+**Stable:** in Obtainium, add `https://github.com/CharlesSaint007/SqueezeSSH` and leave the defaults
+(*Include prereleases* off). Stable releases contain only the stable APK and dev builds are always pre-releases,
+so no APK filter is needed.
+
+**Dev** (optional, for testing new builds): add the same URL a second time, turn *Include prereleases* on, and set
+the APK filter to `^squeezessh-dev-.*\.apk$`.
 
 | Channel | App ID | Obtainium settings |
 |---|---|---|
-| Stable | `me.nick.squeezessh` | Include prereleases **off**. APK filter: `^squeezessh-\d.*\.apk$` |
-| Dev | `me.nick.squeezessh.dev` | Include prereleases **on**. APK filter: `^squeezessh-dev-.*\.apk$` |
+| Stable | `me.nick.squeezessh` | Defaults: prereleases off, no filter |
+| Dev | `me.nick.squeezessh.dev` | Prereleases **on**, APK filter `^squeezessh-dev-.*\.apk$` |
 
 The two channels have different app IDs, so they install side by side.
 
