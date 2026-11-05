@@ -18,6 +18,8 @@ An Android SSH client (JuiceSSH replacement), Kotlin + Jetpack Compose. Public r
   (Room: hosts, identities, keys, forwards, snippets, known hosts; `Vault` is the single entry point),
   `crypto/` (Tink-sealed `SecretStore`, key parsing), `bitwarden/` (own client + `SyncPlanner`), `backup/`,
   `settings/` (DataStore), `ui/` (screens, themes).
+- **License: GPL-3.0-only** (changed from Apache-2.0 after v0.3.0; the owner is the sole author). The vendored modules below stay
+  Apache-2.0 with their own license file; keep that. New dependencies must be GPLv3-compatible (Apache/MIT/BSD are fine).
 - `terminal-emulator/`, `terminal-view/` — **vendored Termux** (Apache-2.0) at v0.118.3, modified. Every change is
   listed in `terminal-emulator/NOTICE.md`; add to it when you touch these modules.
 - `docs/icon/squeezessh-icon.svg` — source art for the launcher icon (`ic_launcher_*.xml` are its Android vectors).
