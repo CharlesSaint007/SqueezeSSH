@@ -20,6 +20,7 @@ class Vault(private val db: AppDatabase, private val secrets: SecretStore) {
     val identities: Flow<List<IdentityEntity>> = db.identities().observeAll()
     val keys: Flow<List<KeyEntity>> = db.keys().observeAll()
     val snippets: Flow<List<SnippetEntity>> = db.snippets().observeAll()
+    val knownHostCount: Flow<Int> = db.knownHosts().observeHostCount()
 
     suspend fun host(id: String) = db.hosts().get(id)
     suspend fun identity(id: String) = db.identities().get(id)
@@ -43,6 +44,9 @@ class Vault(private val db: AppDatabase, private val secrets: SecretStore) {
     suspend fun saveSnippet(snippet: SnippetEntity) = db.snippets().upsert(snippet)
     suspend fun deleteSnippet(snippet: SnippetEntity) = db.snippets().delete(snippet)
     suspend fun deleteHost(host: HostEntity) = db.hosts().delete(host)
+
+    /** Forget every saved host key; each host asks to be trusted again on its next connection. */
+    suspend fun clearKnownHosts() = db.knownHosts().deleteAll()
     suspend fun markConnected(hostId: String) = db.hosts().markConnected(hostId)
 
     // ---- identities ----

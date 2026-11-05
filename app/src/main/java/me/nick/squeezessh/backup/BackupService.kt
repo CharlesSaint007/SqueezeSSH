@@ -86,6 +86,9 @@ class BackupService(
         BackupCodec.encodeEncrypted(file, passphrase)
     }
 
+    /** Whether any saved host requires a fingerprint to connect. */
+    suspend fun hasProtectedHosts(): Boolean = db.hosts().getAll().any { it.requireBiometric }
+
     /** Recognise a file without unlocking it. */
     fun read(text: String): ReadBackup = BackupCodec.read(text)
 
@@ -178,6 +181,7 @@ class BackupService(
                 agentForwarding = h.agentForwarding,
                 compression = h.compression,
                 startupSnippetId = h.startupSnippetId?.takeIf { it in validSnippetIds },
+                requireBiometric = h.requireBiometric,
                 lastConnectedAt = h.lastConnectedAt,
                 connectCount = h.connectCount,
                 createdAt = h.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
@@ -236,8 +240,23 @@ class BackupService(
 }
 
 private fun HostEntity.toBackup() = HostBackup(
-    id, nickname, address, port, username, identityId, jumpHostId, group, themeId, keepaliveSeconds,
-    agentForwarding, compression, startupSnippetId, lastConnectedAt, connectCount, createdAt,
+    id = id,
+    nickname = nickname,
+    address = address,
+    port = port,
+    username = username,
+    identityId = identityId,
+    jumpHostId = jumpHostId,
+    group = group,
+    themeId = themeId,
+    keepaliveSeconds = keepaliveSeconds,
+    agentForwarding = agentForwarding,
+    compression = compression,
+    startupSnippetId = startupSnippetId,
+    requireBiometric = requireBiometric,
+    lastConnectedAt = lastConnectedAt,
+    connectCount = connectCount,
+    createdAt = createdAt,
 )
 
 /** Settings from a backup, falling back to [current] for anything the file leaves out or doesn't recognise. */
@@ -251,6 +270,8 @@ internal fun SettingsBackup.toSettings(current: Settings) = Settings(
     volumeKeysFontSize = volumeKeysFontSize ?: current.volumeKeysFontSize,
     autoReconnect = autoReconnect ?: current.autoReconnect,
     recentQuickConnects = current.recentQuickConnects,
+    // Per-device security setting: restoring a backup on a phone without a screen lock mustn't lock the app.
+    requireBiometricToOpen = current.requireBiometricToOpen,
     // A merge keeps this phone's own themes alongside the file's; same ID means the file's copy wins.
     customThemes = customThemes?.mapNotNull { it.toTheme() }
         ?.let { incoming -> incoming + current.customThemes.filter { c -> incoming.none { it.id == c.id } } }

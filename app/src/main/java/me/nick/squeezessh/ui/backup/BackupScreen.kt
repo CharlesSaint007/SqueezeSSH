@@ -53,7 +53,13 @@ import java.time.LocalDate
 import java.util.Date
 
 @Composable
-fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Unit) {
+fun BackupScreen(
+    backup: BackupService,
+    onImported: () -> Unit,
+    /** Ask the owner to authenticate; true to go ahead. Only called when a protected host exists. */
+    authorizeImport: suspend () -> Boolean,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var includeSecrets by remember { mutableStateOf(false) }
@@ -189,6 +195,11 @@ fun BackupScreen(backup: BackupService, onImported: () -> Unit, onBack: () -> Un
                 busy = "Importing…"
                 scope.launch {
                     try {
+                        // An import can overwrite or remove protected hosts, so it needs the same proof as editing one.
+                        if (backup.hasProtectedHosts() && !authorizeImport()) {
+                            message = "Import cancelled: authentication is required because some hosts are protected."
+                            return@launch
+                        }
                         val result = backup.import(file, mode, pass ?: unlockedWith)
                         pending = null
                         message = summary(result)

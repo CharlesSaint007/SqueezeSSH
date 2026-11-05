@@ -4,13 +4,18 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
+import android.view.WindowManager
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.withResumed
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -29,6 +34,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import me.nick.squeezessh.data.ForwardEntity
 import me.nick.squeezessh.data.HostEntity
+import me.nick.squeezessh.security.AppLock
+import me.nick.squeezessh.security.AuthResult
+import me.nick.squeezessh.security.AuthRules
+import me.nick.squeezessh.security.Biometrics
 import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
 import me.nick.squeezessh.terminal.TerminalScreen
@@ -42,17 +51,48 @@ import me.nick.squeezessh.ui.hosts.HostsScreen
 import me.nick.squeezessh.ui.hosts.QuickConnect
 import me.nick.squeezessh.ui.identities.IdentitiesScreen
 import me.nick.squeezessh.ui.keys.KeysScreen
+import me.nick.squeezessh.ui.security.LockScreen
 import me.nick.squeezessh.ui.snippets.SnippetsScreen
 import me.nick.squeezessh.ui.theme.BuiltInThemes
 import me.nick.squeezessh.ui.theme.SqueezeTheme
 import me.nick.squeezessh.ui.theme.ThemeEditorScreen
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     /** A session a notification asked to open; consumed by the nav graph. */
     private val pendingSessionId = MutableStateFlow<String?>(null)
 
     /** A host a launcher shortcut asked to connect to; consumed by the nav graph. */
     private val pendingHostId = MutableStateFlow<String?>(null)
+
+    /**
+     * Ask the owner to authenticate before something protected, unless [protected] is false or the phone has
+     * nothing to authenticate with (then the owner must not be trapped). True means "go ahead".
+     */
+    private suspend fun authorize(protected: Boolean, title: String): Boolean {
+        if (!AuthRules.requiresAuth(protected, Biometrics.isAvailable(this))) return true
+        return Biometrics.authenticate(this, title) is AuthResult.Success
+    }
+
+    /** Whether the app lock has been opened since it last locked. Only matters when the lock is turned on. */
+    private var unlocked by mutableStateOf(false)
+
+    /** Mirrors the setting so the lifecycle callbacks (outside Compose) can see it. */
+    @Volatile
+    private var appLockEnabled = false
+    private var backgroundedAt: Long? = null
+
+    override fun onStop() {
+        super.onStop()
+        backgroundedAt = SystemClock.elapsedRealtime()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Locks again once the app has been out of sight for a while, not on every short trip away (the
+        // fingerprint prompt itself can pause the activity on older Android versions).
+        if (appLockEnabled && AppLock.shouldRelock(backgroundedAt, SystemClock.elapsedRealtime())) unlocked = false
+        backgroundedAt = null
+    }
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         // Sessions run either way; without the permission they just have no per-session notifications.
@@ -69,7 +109,37 @@ class MainActivity : ComponentActivity() {
         val bitwarden = app.bitwarden
 
         setContent {
-            val settings by repo.settings.collectAsStateWithLifecycle(initialValue = Settings())
+            val loadedSettings by repo.settings.collectAsStateWithLifecycle<Settings?>(initialValue = null)
+            val settings = loadedSettings ?: Settings()
+            SideEffect { appLockEnabled = loadedSettings?.requireBiometricToOpen == true }
+            // With the app lock on, keep the app out of screenshots and the recent-apps thumbnail.
+            SideEffect {
+                if (appLockEnabled) {
+                    window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+            // Until the settings have loaded we can't know whether to lock, so show nothing rather than flash the app.
+            val locked = loadedSettings == null || (loadedSettings?.requireBiometricToOpen == true && !unlocked)
+            var lockMessage by remember { mutableStateOf<String?>(null) }
+            var lockUnavailable by remember { mutableStateOf(false) }
+            var unlockRequest by remember { mutableIntStateOf(0) }
+            val settingsLoaded = loadedSettings != null
+            // Keyed on settingsLoaded too: `locked` is already true before the settings arrive, so without it this
+            // would not run again once they do, and the prompt wouldn't appear until the Unlock button was tapped.
+            LaunchedEffect(locked, settingsLoaded, unlockRequest) {
+                if (!locked || !settingsLoaded) return@LaunchedEffect
+                // Wait until the app is in front: asked for earlier, the system prompt is dropped.
+                lifecycle.withResumed { }
+                lockUnavailable = false
+                when (val r = Biometrics.authenticate(this@MainActivity, "Unlock SqueezeSSH")) {
+                    AuthResult.Success -> { unlocked = true; lockMessage = null }
+                    AuthResult.Cancelled -> lockMessage = null
+                    AuthResult.Unavailable -> lockUnavailable = true
+                    is AuthResult.Failed -> lockMessage = r.message
+                }
+            }
             val scope = rememberCoroutineScope()
             val openSessions by sessions.sessions.collectAsStateWithLifecycle()
             val hosts by vault.hosts.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -77,6 +147,7 @@ class MainActivity : ComponentActivity() {
             val keys by vault.keys.collectAsStateWithLifecycle(initialValue = emptyList())
             val syncStatus by bitwarden.status.collectAsStateWithLifecycle()
             val snippets by vault.snippets.collectAsStateWithLifecycle(initialValue = emptyList())
+            val knownHostCount by vault.knownHostCount.collectAsStateWithLifecycle(initialValue = 0)
 
             // A quick-connect target isn't saved, so it is handed to the connect screen in memory.
             var quickHost by remember { mutableStateOf<HostEntity?>(null) }
@@ -134,9 +205,16 @@ class MainActivity : ComponentActivity() {
                                 nav.navigate("connect/$QUICK_ID")
                             },
                             onAddHost = { nav.navigate("host/new") },
-                            onEditHost = { host -> nav.navigate("host/${host.id}") },
-                            onCopyHost = { host -> nav.navigate("host/new?from=${host.id}") },
-                            onDeleteHost = { host -> scope.launch { vault.deleteHost(host) } },
+                            // Editing, copying and deleting a protected host all need the owner to authenticate first.
+                            onEditHost = { host ->
+                                scope.launch { if (authorize(host.requireBiometric, "Edit ${host.nickname}")) nav.navigate("host/${host.id}") }
+                            },
+                            onCopyHost = { host ->
+                                scope.launch { if (authorize(host.requireBiometric, "Copy ${host.nickname}")) nav.navigate("host/new?from=${host.id}") }
+                            },
+                            onDeleteHost = { host ->
+                                scope.launch { if (authorize(host.requireBiometric, "Delete ${host.nickname}")) vault.deleteHost(host) }
+                            },
                             onOpenSession = { id -> nav.navigate("terminal/$id") },
                             onCloseSession = { id -> sessions.close(id) },
                             onLocalShell = {
@@ -177,13 +255,22 @@ class MainActivity : ComponentActivity() {
                                 snippets = snippets,
                                 initialForwards = forwards,
                                 onSave = { host, fwds -> scope.launch { vault.saveHost(host, fwds) }; nav.back() },
-                                onDelete = { host -> scope.launch { vault.deleteHost(host) }; nav.back() },
+                                onDelete = { host ->
+                                    scope.launch {
+                                        if (authorize(host.requireBiometric, "Delete ${host.nickname}")) {
+                                            vault.deleteHost(host)
+                                            nav.back()
+                                        }
+                                    }
+                                },
+                                onRequestDisableBiometric = { host -> authorize(host.requireBiometric, "Turn off fingerprint for ${host.nickname}") },
                                 onManageIdentities = { nav.navigate("identities") },
                                 onPinShortcut = if (HostShortcuts.canPin(this@MainActivity)) {
                                     { host -> HostShortcuts.pin(this@MainActivity, host) }
                                 } else {
                                     null
                                 },
+                                biometricAvailable = Biometrics.isAvailable(this@MainActivity),
                                 onBack = { nav.back() },
                             )
                         }
@@ -197,6 +284,17 @@ class MainActivity : ComponentActivity() {
                             ConnectScreen(
                                 host = h,
                                 connections = app.connections,
+                                // Asked for the host and for every protected jump host on the way to it.
+                                authenticate = { hop ->
+                                    when (val r = Biometrics.authenticate(this@MainActivity, "Connect to ${hop.nickname}")) {
+                                        AuthResult.Success -> null
+                                        AuthResult.Cancelled -> "Authentication cancelled."
+                                        AuthResult.Unavailable ->
+                                            "\"${hop.nickname}\" requires a fingerprint or screen lock, but this phone has none set up. " +
+                                                "Set one up, or turn the requirement off in the host's settings."
+                                        is AuthResult.Failed -> r.message
+                                    }
+                                },
                                 onConnected = { backend ->
                                     val override = settings.themes.find(h.themeId)
                                     val entry = sessions.open(
@@ -205,6 +303,7 @@ class MainActivity : ComponentActivity() {
                                         theme = override ?: settings.terminalTheme,
                                         themeOverridden = override != null,
                                         hostId = h.id.takeIf { it != QUICK_ID },
+                                        isProtected = h.requireBiometric,
                                     )
                                     onSessionStarted()
                                     if (h.id != QUICK_ID) HostShortcuts.reportUsed(this@MainActivity, h.id)
@@ -302,6 +401,8 @@ class MainActivity : ComponentActivity() {
                             backup = app.backup,
                             // Restored keys may need their private halves from the vault.
                             onImported = { bitwarden.requestSync(0) },
+                            // A backup can overwrite or remove protected hosts, so it needs the same proof.
+                            authorizeImport = { authorize(true, "Import backup") },
                             onBack = { nav.back() },
                         )
                     }
@@ -319,12 +420,41 @@ class MainActivity : ComponentActivity() {
                             onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
                             onVolumeKeysFontSize = { on -> scope.launch { repo.setVolumeKeysFontSize(on) } },
                             onAutoReconnect = { on -> scope.launch { repo.setAutoReconnect(on) } },
+                            biometricAvailable = Biometrics.isAvailable(this@MainActivity),
+                            onRequireBiometricToOpen = { on ->
+                                scope.launch {
+                                    if (!on) {
+                                        // Once on, turning it off takes the same proof as getting in.
+                                        if (authorize(settings.requireBiometricToOpen, "Turn off app lock")) {
+                                            repo.setRequireBiometricToOpen(false)
+                                        }
+                                        return@launch
+                                    }
+                                    // Prove it works before turning it on, so the app can't lock its owner out.
+                                    when (val r = Biometrics.authenticate(this@MainActivity, "Turn on app lock")) {
+                                        AuthResult.Success -> { unlocked = true; repo.setRequireBiometricToOpen(true) }
+                                        else -> if (r is AuthResult.Failed) android.widget.Toast.makeText(this@MainActivity, r.message, android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
                             onBitwarden = { nav.navigate("bitwarden") },
                             onBackup = { nav.navigate("backup") },
+                            knownHostCount = knownHostCount,
+                            onClearKnownHosts = { scope.launch { vault.clearKnownHosts() } },
                             onEditTheme = { id -> nav.navigate("theme/$id") },
                             onBack = { nav.back() },
                         )
                     }
+                }
+
+                // Drawn over everything, so nothing of the app (including a running session) shows while locked.
+                if (locked) {
+                    LockScreen(
+                        message = lockMessage,
+                        unavailable = lockUnavailable,
+                        onUnlock = { unlockRequest++ },
+                        onTurnOffLock = { scope.launch { repo.setRequireBiometricToOpen(false) } },
+                    )
                 }
             }
         }

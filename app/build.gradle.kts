@@ -105,6 +105,10 @@ dependencies {
     // MINA SSHD logs through SLF4J; without a binding it prints a warning at startup.
     implementation(libs.slf4j.nop)
     implementation(libs.androidx.activity.compose)
+    // BiometricPrompt, for the app lock and per-host authentication.
+    implementation(libs.androidx.biometric)
+    // BiometricPrompt needs a FragmentActivity; pin it so it matches the rest of the AndroidX stack.
+    implementation(libs.androidx.fragment)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(platform(libs.compose.bom))

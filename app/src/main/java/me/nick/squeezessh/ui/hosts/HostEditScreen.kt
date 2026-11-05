@@ -27,11 +27,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import me.nick.squeezessh.data.ForwardEntity
 import me.nick.squeezessh.data.HostEntity
 import me.nick.squeezessh.data.IdentityEntity
@@ -57,6 +59,13 @@ fun HostEditScreen(
     onManageIdentities: () -> Unit,
     /** Pin the saved host to the home screen; null when the launcher can't pin shortcuts. */
     onPinShortcut: ((HostEntity) -> Unit)?,
+    /** Whether the phone has a fingerprint, face or screen lock to ask for. */
+    biometricAvailable: Boolean,
+    /**
+     * Called before switching "Require fingerprint to connect" off for a host where it is already saved as on;
+     * returns true once the owner has authenticated.
+     */
+    onRequestDisableBiometric: suspend (HostEntity) -> Boolean,
     onBack: () -> Unit,
 ) {
     // Editing starts from the saved host; a copy starts from the template, as an unsaved new host.
@@ -74,6 +83,8 @@ fun HostEditScreen(
     var keepalive by remember { mutableStateOf((source?.keepaliveSeconds ?: 30).toString()) }
     var agentForwarding by remember { mutableStateOf(source?.agentForwarding ?: false) }
     var startupSnippetId by remember { mutableStateOf(source?.startupSnippetId) }
+    val scope = rememberCoroutineScope()
+    var requireBiometric by remember { mutableStateOf(source?.requireBiometric ?: false) }
     var confirmDelete by remember { mutableStateOf(false) }
     // A new host gets its ID up front so forwards added before the first save can point at it.
     val hostId = remember { existing?.id ?: UUID.randomUUID().toString() }
@@ -204,6 +215,34 @@ fun HostEditScreen(
             ForwardsEditor(forwards = forwards, hostId = hostId, onChange = { forwards = it })
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
+                    Text("Require fingerprint to connect", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (biometricAvailable) {
+                            "Asks for your fingerprint, face or screen lock each time before connecting to this host."
+                        } else {
+                            "Set up a fingerprint or screen lock in your phone's settings to use this."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // Can always be switched off, even when the phone has lost its lock; only turning it on needs one.
+                Switch(
+                    checked = requireBiometric,
+                    onCheckedChange = { on ->
+                        if (on || existing?.requireBiometric != true) {
+                            // Turning on, or switching off something that was never saved as on: free.
+                            requireBiometric = on
+                        } else {
+                            // Saved as on: turning it off needs the owner's fingerprint first.
+                            scope.launch { if (onRequestDisableBiometric(existing)) requireBiometric = false }
+                        }
+                    },
+                    enabled = biometricAvailable || requireBiometric,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
                     Text("Agent forwarding", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Only enable for servers you trust.",
@@ -231,6 +270,7 @@ fun HostEditScreen(
                             keepaliveSeconds = keepalive.toIntOrNull() ?: 30,
                             agentForwarding = agentForwarding,
                             startupSnippetId = startupSnippetId,
+                            requireBiometric = requireBiometric,
                         ),
                         forwards,
                     )
