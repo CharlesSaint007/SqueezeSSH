@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import me.nick.squeezessh.R
 import me.nick.squeezessh.data.HostEntity
 import me.nick.squeezessh.data.IdentityEntity
+import me.nick.squeezessh.security.Masking
 import me.nick.squeezessh.session.SessionInfo
 
 /** A parsed `user@host:port` quick-connect string. */
@@ -115,7 +116,10 @@ fun HostsScreen(
 
     val visible = hosts
         .filter { h ->
-            query.isBlank() || listOf(h.nickname, h.address, h.group.orEmpty()).any { it.contains(query.trim(), ignoreCase = true) }
+            // A protected host's address is hidden, so it must not be searchable either (typing "192" would reveal it).
+            query.isBlank() ||
+                listOf(h.nickname, if (h.requireBiometric) "" else h.address, h.group.orEmpty())
+                    .any { it.contains(query.trim(), ignoreCase = true) }
         }
         .let { list ->
             when (sort) {
@@ -261,11 +265,17 @@ fun HostsScreen(
                         headlineContent = { Text(host.nickname) },
                         supportingContent = {
                             Column {
-                                Text(buildString {
-                                    if (user != null) append("$user@")
-                                    append(host.address)
-                                    if (host.port != 22) append(":${host.port}")
-                                })
+                                Text(
+                                    if (host.requireBiometric) {
+                                        Masking.maskedTarget(user, host.address)
+                                    } else {
+                                        buildString {
+                                            if (user != null) append("$user@")
+                                            append(host.address)
+                                            if (host.port != 22) append(":${host.port}")
+                                        }
+                                    },
+                                )
                                 if (host.group != null) {
                                     Text(host.group, style = MaterialTheme.typography.labelSmall)
                                 }

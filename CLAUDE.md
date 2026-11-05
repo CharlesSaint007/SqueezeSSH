@@ -64,6 +64,13 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
 - Backups: the whole file is always encrypted (Argon2id + AES-GCM). `BackupFile.secrets` is the **legacy** 0.1.0
   format, kept so old files import. Keys restored without a private half use a `missing-` secret ID and are pulled
   from Bitwarden, never pushed.
+- Biometric protection (`security/Biometrics.kt`): once a switch is saved as on, turning it off, and editing /
+  copying / deleting a protected host, connecting through it as a jump host, and importing a backup while one
+  exists, all need `authorize(...)` in `MainActivity`. Protected hosts are masked via `Masking` and excluded from
+  address search. The unlock prompt's `LaunchedEffect` must be keyed on whether settings have loaded (the lock is
+  `true` before they do). If the phone has no screen lock, `AuthRules` lets the off-ramps through so nobody is
+  trapped. Emulator: set a PIN with `adb shell locksettings set-pin`, tap the system keypad by its UI nodes (key
+  events don't reach it), and remove the PIN afterwards; screenshots of the PIN screen are black.
 - Releases: the release job fails if the stable release would carry anything but `squeezessh-<version>.apk`.
 
 ## Testing against real things

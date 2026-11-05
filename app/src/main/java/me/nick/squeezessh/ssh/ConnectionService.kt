@@ -1,6 +1,7 @@
 package me.nick.squeezessh.ssh
 
 import me.nick.squeezessh.data.HostEntity
+import me.nick.squeezessh.security.AuthRules
 import me.nick.squeezessh.data.Vault
 import org.apache.sshd.client.session.ClientSession
 
@@ -13,8 +14,21 @@ class HostConfigException(message: String) : Exception(message)
  */
 class ConnectionService(private val vault: Vault, private val connector: SshConnector) {
 
-    suspend fun openShell(host: HostEntity, prompts: SshPrompts, usernameOverride: String? = null): SshShellBackend {
+    /**
+     * @param authorize called with each host on the way before it is connected to (the jump hosts, then [host]);
+     * returns null to go ahead or a message to stop with. This is how a protected jump host cannot be used as a
+     * way around its fingerprint requirement.
+     */
+    suspend fun openShell(
+        host: HostEntity,
+        prompts: SshPrompts,
+        usernameOverride: String? = null,
+        authorize: (suspend (HostEntity) -> String?)? = null,
+    ): SshShellBackend {
         val chain = jumpChain(host)
+        authorize?.let { check ->
+            AuthRules.firstRefusal(chain, isProtected = { it.requireBiometric }, ask = check)?.let { throw HostConfigException(it) }
+        }
         val opened = mutableListOf<ClientSession>()
         try {
             var previous: ClientSession? = null

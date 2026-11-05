@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import me.nick.squeezessh.data.HostEntity
+import me.nick.squeezessh.security.Masking
 import me.nick.squeezessh.ssh.ConnectionService
 import me.nick.squeezessh.ssh.SshShellBackend
 import me.nick.squeezessh.ui.common.BackTopBar
@@ -43,7 +44,7 @@ fun ConnectScreen(
      * Prove who is holding the phone (fingerprint / face / screen lock) before connecting; used for hosts that
      * require it. Returns null when it succeeded, else a message to show. Null means "don't ask".
      */
-    authenticate: (suspend () -> String?)? = null,
+    authenticate: (suspend (HostEntity) -> String?)? = null,
 ) {
     val prompter = remember { ConnectPrompter() }
     var error by remember { mutableStateOf<String?>(null) }
@@ -52,13 +53,13 @@ fun ConnectScreen(
     LaunchedEffect(attempt) {
         error = null
         try {
-            if (host.requireBiometric && authenticate != null) {
-                authenticate()?.let { problem ->
-                    error = problem
-                    return@LaunchedEffect
-                }
-            }
-            val backend = connections.openShell(host, prompter, usernameOverride)
+            val backend = connections.openShell(
+                host,
+                prompter,
+                usernameOverride,
+                // Asked once per protected host on the way, jump hosts included, before that hop connects.
+                authorize = authenticate,
+            )
             onConnected(backend)
         } catch (e: CancellationException) {
             throw e
@@ -74,9 +75,13 @@ fun ConnectScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         ) {
-            val target = buildString {
-                append(host.address)
-                if (host.port != 22) append(":${host.port}")
+            val target = if (host.requireBiometric) {
+                Masking.maskAddress(host.address)
+            } else {
+                buildString {
+                    append(host.address)
+                    if (host.port != 22) append(":${host.port}")
+                }
             }
             if (error == null) {
                 CircularProgressIndicator()
