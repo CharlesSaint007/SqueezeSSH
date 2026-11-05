@@ -86,6 +86,9 @@ class BackupService(
         BackupCodec.encodeEncrypted(file, passphrase)
     }
 
+    /** Whether any saved host requires a fingerprint to connect. */
+    suspend fun hasProtectedHosts(): Boolean = db.hosts().getAll().any { it.requireBiometric }
+
     /** Recognise a file without unlocking it. */
     fun read(text: String): ReadBackup = BackupCodec.read(text)
 

@@ -36,6 +36,7 @@ import me.nick.squeezessh.data.ForwardEntity
 import me.nick.squeezessh.data.HostEntity
 import me.nick.squeezessh.security.AppLock
 import me.nick.squeezessh.security.AuthResult
+import me.nick.squeezessh.security.AuthRules
 import me.nick.squeezessh.security.Biometrics
 import me.nick.squeezessh.session.SessionService
 import me.nick.squeezessh.settings.Settings
@@ -62,6 +63,15 @@ class MainActivity : FragmentActivity() {
 
     /** A host a launcher shortcut asked to connect to; consumed by the nav graph. */
     private val pendingHostId = MutableStateFlow<String?>(null)
+
+    /**
+     * Ask the owner to authenticate before something protected, unless [protected] is false or the phone has
+     * nothing to authenticate with (then the owner must not be trapped). True means "go ahead".
+     */
+    private suspend fun authorize(protected: Boolean, title: String): Boolean {
+        if (!AuthRules.requiresAuth(protected, Biometrics.isAvailable(this))) return true
+        return Biometrics.authenticate(this, title) is AuthResult.Success
+    }
 
     /** Whether the app lock has been opened since it last locked. Only matters when the lock is turned on. */
     private var unlocked by mutableStateOf(false)
@@ -115,8 +125,11 @@ class MainActivity : FragmentActivity() {
             var lockMessage by remember { mutableStateOf<String?>(null) }
             var lockUnavailable by remember { mutableStateOf(false) }
             var unlockRequest by remember { mutableIntStateOf(0) }
-            LaunchedEffect(locked, unlockRequest) {
-                if (!locked || loadedSettings == null) return@LaunchedEffect
+            val settingsLoaded = loadedSettings != null
+            // Keyed on settingsLoaded too: `locked` is already true before the settings arrive, so without it this
+            // would not run again once they do, and the prompt wouldn't appear until the Unlock button was tapped.
+            LaunchedEffect(locked, settingsLoaded, unlockRequest) {
+                if (!locked || !settingsLoaded) return@LaunchedEffect
                 // Wait until the app is in front: asked for earlier, the system prompt is dropped.
                 lifecycle.withResumed { }
                 lockUnavailable = false
@@ -192,9 +205,16 @@ class MainActivity : FragmentActivity() {
                                 nav.navigate("connect/$QUICK_ID")
                             },
                             onAddHost = { nav.navigate("host/new") },
-                            onEditHost = { host -> nav.navigate("host/${host.id}") },
-                            onCopyHost = { host -> nav.navigate("host/new?from=${host.id}") },
-                            onDeleteHost = { host -> scope.launch { vault.deleteHost(host) } },
+                            // Editing, copying and deleting a protected host all need the owner to authenticate first.
+                            onEditHost = { host ->
+                                scope.launch { if (authorize(host.requireBiometric, "Edit ${host.nickname}")) nav.navigate("host/${host.id}") }
+                            },
+                            onCopyHost = { host ->
+                                scope.launch { if (authorize(host.requireBiometric, "Copy ${host.nickname}")) nav.navigate("host/new?from=${host.id}") }
+                            },
+                            onDeleteHost = { host ->
+                                scope.launch { if (authorize(host.requireBiometric, "Delete ${host.nickname}")) vault.deleteHost(host) }
+                            },
                             onOpenSession = { id -> nav.navigate("terminal/$id") },
                             onCloseSession = { id -> sessions.close(id) },
                             onLocalShell = {
@@ -235,7 +255,15 @@ class MainActivity : FragmentActivity() {
                                 snippets = snippets,
                                 initialForwards = forwards,
                                 onSave = { host, fwds -> scope.launch { vault.saveHost(host, fwds) }; nav.back() },
-                                onDelete = { host -> scope.launch { vault.deleteHost(host) }; nav.back() },
+                                onDelete = { host ->
+                                    scope.launch {
+                                        if (authorize(host.requireBiometric, "Delete ${host.nickname}")) {
+                                            vault.deleteHost(host)
+                                            nav.back()
+                                        }
+                                    }
+                                },
+                                onRequestDisableBiometric = { host -> authorize(host.requireBiometric, "Turn off fingerprint for ${host.nickname}") },
                                 onManageIdentities = { nav.navigate("identities") },
                                 onPinShortcut = if (HostShortcuts.canPin(this@MainActivity)) {
                                     { host -> HostShortcuts.pin(this@MainActivity, host) }
@@ -256,12 +284,13 @@ class MainActivity : FragmentActivity() {
                             ConnectScreen(
                                 host = h,
                                 connections = app.connections,
-                                authenticate = {
-                                    when (val r = Biometrics.authenticate(this@MainActivity, "Connect to ${h.nickname}")) {
+                                // Asked for the host and for every protected jump host on the way to it.
+                                authenticate = { hop ->
+                                    when (val r = Biometrics.authenticate(this@MainActivity, "Connect to ${hop.nickname}")) {
                                         AuthResult.Success -> null
                                         AuthResult.Cancelled -> "Authentication cancelled."
                                         AuthResult.Unavailable ->
-                                            "This host requires a fingerprint or screen lock, but this phone has none set up. " +
+                                            "\"${hop.nickname}\" requires a fingerprint or screen lock, but this phone has none set up. " +
                                                 "Set one up, or turn the requirement off in the host's settings."
                                         is AuthResult.Failed -> r.message
                                     }
@@ -274,6 +303,7 @@ class MainActivity : FragmentActivity() {
                                         theme = override ?: settings.terminalTheme,
                                         themeOverridden = override != null,
                                         hostId = h.id.takeIf { it != QUICK_ID },
+                                        isProtected = h.requireBiometric,
                                     )
                                     onSessionStarted()
                                     if (h.id != QUICK_ID) HostShortcuts.reportUsed(this@MainActivity, h.id)
@@ -371,6 +401,8 @@ class MainActivity : FragmentActivity() {
                             backup = app.backup,
                             // Restored keys may need their private halves from the vault.
                             onImported = { bitwarden.requestSync(0) },
+                            // A backup can overwrite or remove protected hosts, so it needs the same proof.
+                            authorizeImport = { authorize(true, "Import backup") },
                             onBack = { nav.back() },
                         )
                     }
@@ -392,7 +424,10 @@ class MainActivity : FragmentActivity() {
                             onRequireBiometricToOpen = { on ->
                                 scope.launch {
                                     if (!on) {
-                                        repo.setRequireBiometricToOpen(false)
+                                        // Once on, turning it off takes the same proof as getting in.
+                                        if (authorize(settings.requireBiometricToOpen, "Turn off app lock")) {
+                                            repo.setRequireBiometricToOpen(false)
+                                        }
                                         return@launch
                                     }
                                     // Prove it works before turning it on, so the app can't lock its owner out.

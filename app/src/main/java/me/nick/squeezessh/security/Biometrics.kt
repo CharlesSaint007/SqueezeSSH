@@ -75,3 +75,46 @@ object AppLock {
     fun shouldRelock(backgroundedAt: Long?, now: Long, graceMs: Long = GRACE_MS): Boolean =
         backgroundedAt != null && now - backgroundedAt > graceMs
 }
+
+/**
+ * Hides a protected host's connection details. A protected host (one with "Require fingerprint to connect" on)
+ * shows only enough to recognise it: `pi@192.168.3.3` becomes `pi@192...3`.
+ */
+object Masking {
+    /** First three characters, `...`, last character. Shorter than five characters, only the first is shown. */
+    fun maskAddress(address: String): String {
+        val a = address.trim()
+        return when {
+            a.isEmpty() -> ""
+            a.length >= 5 -> a.take(3) + "..." + a.last()
+            else -> a.take(1) + "..."
+        }
+    }
+
+    /** `user@masked`, or just the masked address when there is no user. The port is never shown. */
+    fun maskedTarget(user: String?, address: String): String =
+        if (user.isNullOrBlank()) maskAddress(address) else "$user@${maskAddress(address)}"
+}
+
+/** Which protected actions need the owner to authenticate. Kept apart from the UI so the rules are testable. */
+object AuthRules {
+    /** Whether [action] on something with its protection [enabled] should prompt, given the phone can prompt. */
+    fun requiresAuth(enabled: Boolean, canAuthenticate: Boolean): Boolean = enabled && canAuthenticate
+
+    /**
+     * Walks a connection's chain (jump hosts first, the target last) asking [ask] about each protected host before
+     * it is connected to. Returns the first refusal, or null if every protected hop was approved. Unprotected
+     * hops are never asked about, and nothing after a refusal is.
+     */
+    suspend fun <T> firstRefusal(chain: List<T>, isProtected: (T) -> Boolean, ask: suspend (T) -> String?): String? {
+        for (hop in chain) {
+            if (!isProtected(hop)) continue
+            ask(hop)?.let { return it }
+        }
+        return null
+    }
+
+    /** Turning a switch off prompts only if the *saved* value is on; flipping an unsaved switch back is free. */
+    fun requiresAuthToDisable(savedEnabled: Boolean, canAuthenticate: Boolean): Boolean =
+        requiresAuth(savedEnabled, canAuthenticate)
+}

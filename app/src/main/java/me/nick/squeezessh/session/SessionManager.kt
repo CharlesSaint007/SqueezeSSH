@@ -19,6 +19,8 @@ class SessionEntry(
     val label: String,
     /** The saved host this session connected to; null for the local shell and one-off quick connects. */
     val hostId: String? = null,
+    /** The host requires a fingerprint, so what the remote shell reports about it (its title) is not shown. */
+    val isProtected: Boolean = false,
     val session: TerminalSession,
     /** The theme this session uses: the host's override, or the global theme. */
     var theme: TerminalTheme,
@@ -36,7 +38,7 @@ class SessionEntry(
     /** Whether the key bar is shown; tapping the terminal toggles it, and each session remembers its own. */
     var keyBarVisible by mutableStateOf(true)
 
-    fun info() = SessionInfo(id, label, session.title, session.isRunning, startedAt)
+    fun info() = SessionInfo(id, label, session.title.takeUnless { isProtected }, session.isRunning, startedAt)
 }
 
 /** An immutable snapshot of a session, for lists and notifications. */
@@ -76,12 +78,14 @@ class SessionManager {
         theme: TerminalTheme,
         themeOverridden: Boolean = false,
         hostId: String? = null,
+        isProtected: Boolean = false,
     ): SessionEntry {
         val session = TerminalSession(backend, TRANSCRIPT_ROWS, theme.toColorScheme(), client)
         val entry = SessionEntry(
             id = session.mHandle,
             label = label,
             hostId = hostId,
+            isProtected = isProtected,
             session = session,
             theme = theme,
             themeOverridden = themeOverridden,
