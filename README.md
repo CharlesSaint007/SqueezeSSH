@@ -4,7 +4,7 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 
 > **Status:** early development. SSH connections, a local shell, themes, and background sessions work. See the roadmap below.
 
-## Planned features
+## Features
 
 - SSH connections with reusable identities (password and/or key), groups, quick connect, and jump hosts
 - Port forwarding: local (`-L`), remote (`-R`), and dynamic SOCKS5 (`-D`)
