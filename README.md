@@ -157,4 +157,10 @@ Keep a backup of the keystore. If it's lost, existing installs can't be updated 
 
 ## License
 
-[Apache License 2.0](LICENSE)
+SqueezeSSH is free software under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only).
+
+- Releases up to and including **v0.3.0** were published under the Apache License 2.0 and remain available under it.
+  Newer versions are GPLv3.
+- `terminal-emulator/` and `terminal-view/` are vendored from Termux (via Android-Terminal-Emulator) and keep their
+  own [Apache License 2.0](terminal-emulator/LICENSE-APACHE-2.0.txt), which is compatible with GPLv3. See
+  `terminal-emulator/NOTICE.md`.
