@@ -26,6 +26,8 @@ data class SshTarget(
     val port: Int,
     val username: String,
     val keyPair: KeyPair?,
+    /** Keys offered to the server through agent forwarding; empty when the host doesn't forward its agent. */
+    val agentKeys: List<AgentKey> = emptyList(),
     /** A stored password, if any. When null and the server wants a password, [SshPrompts.password] is asked. */
     val password: String?,
     val keepaliveSeconds: Int = 30,
@@ -56,6 +58,9 @@ class SshConnector(private val hostKeys: HostKeyVerifier) {
         // forwards. The server only opens them for remote forwards this app asked for, and each one goes to the
         // destination saved with that forward, so accept them.
         forwardingFilter = AcceptAllForwardingFilter.INSTANCE
+        // Answers the server's agent channels on hosts that turn agent forwarding on. Must be set before start(),
+        // which registers the channel factories it supplies.
+        agentFactory = ForwardedAgentFactory()
         // Log why sessions end; a dropped connection is otherwise silent.
         addSessionListener(object : SessionListener {
             override fun sessionException(session: Session, t: Throwable) {
@@ -116,6 +121,7 @@ class SshConnector(private val hostKeys: HostKeyVerifier) {
             }
         }
         target.keyPair?.let { session.addPublicKeyIdentity(it) }
+        if (target.agentKeys.isNotEmpty()) ForwardedAgentFactory.attach(session, target.agentKeys)
         target.password?.let { session.addPasswordIdentity(it) }
 
         var passwordAttempts = 0
