@@ -1,6 +1,7 @@
 package me.nick.squeezessh.ssh
 
 import me.nick.squeezessh.data.HostEntity
+import me.nick.squeezessh.data.KeyEntity
 import me.nick.squeezessh.security.AuthRules
 import me.nick.squeezessh.data.Vault
 import org.apache.sshd.client.session.ClientSession
@@ -90,11 +91,22 @@ class ConnectionService(private val vault: Vault, private val connector: SshConn
             port = host.port,
             username = username,
             keyPair = key?.let { vault.keyPair(it) },
+            agentKeys = if (host.agentForwarding) agentKeysFor(key) else emptyList(),
             password = identity?.let { vault.password(it) },
             keepaliveSeconds = host.keepaliveSeconds,
             compression = host.compression,
         )
     }
+
+    /**
+     * The keys to forward: the one this host logs in with plus every key linked to Bitwarden, i.e. the ones the user
+     * keeps in their vault. Other keys stay on the phone, so a compromised server can't ask for them.
+     */
+    private suspend fun agentKeysFor(loginKey: KeyEntity?): List<AgentKey> =
+        (listOfNotNull(loginKey) + vault.allKeys().filter { it.bitwardenCipherId != null })
+            .distinctBy { it.id }
+            .filter { it.hasPrivateKey }
+            .mapNotNull { key -> vault.keyPair(key)?.let { AgentKey(it, key.name) } }
 
     private companion object {
         const val MAX_JUMPS = 5
