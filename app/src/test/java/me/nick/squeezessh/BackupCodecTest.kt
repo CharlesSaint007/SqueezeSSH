@@ -17,6 +17,12 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * A host name long enough that it cannot appear in random ciphertext by chance. (The checks that a backup "hides
+ * everything" used a 3-letter name, which showed up in about 1 run in 300 and failed CI.)
+ */
+private const val SECRET_HOST_NAME = "squeezessh-test-host.internal.example"
+
 class BackupCodecTest {
     // Small Argon2 settings keep the tests fast; the format records whatever was used.
     private val fast = BackupCodec.KdfParams(iterations = 1, memoryKiB = 1024, parallelism = 1)
@@ -85,7 +91,7 @@ class BackupCodecTest {
         val original = file().copy(includedSecrets = secrets)
         val text = BackupCodec.encodeEncrypted(original, "correct horse", fast)
         // Nothing readable on disk: not the host, not the secrets.
-        for (plain in listOf("pi5", "hunter2", "OPENSSH PRIVATE KEY", "hosts")) assertFalse(plain, text.contains(plain))
+        for (plain in listOf(SECRET_HOST_NAME, "hunter2", "OPENSSH PRIVATE KEY", "\"hosts\"")) assertFalse(plain, text.contains(plain))
         val read = BackupCodec.read(text)
         assertTrue(read is me.nick.squeezessh.backup.ReadBackup.Locked)
         val locked = (read as me.nick.squeezessh.backup.ReadBackup.Locked).file
@@ -96,7 +102,7 @@ class BackupCodecTest {
     @Test
     fun encryptedWithoutSecretsStillNeedsThePassphrase() {
         val text = BackupCodec.encodeEncrypted(file(), "pw-12345678", fast)
-        assertFalse(text.contains("pi5"))
+        assertFalse(text.contains(SECRET_HOST_NAME))
         val locked = (BackupCodec.read(text) as me.nick.squeezessh.backup.ReadBackup.Locked).file
         assertNull(BackupCodec.decrypt(locked, "pw-12345678").includedSecrets)
     }
@@ -120,7 +126,7 @@ class BackupCodecTest {
 
     @Test
     fun perHostBiometricRequirementSurvivesAnEncryptedBackup() {
-        val withFlag = file().copy(hosts = listOf(HostBackup(id = "h1", nickname = "pi5", address = "pi5", requireBiometric = true)))
+        val withFlag = file().copy(hosts = listOf(HostBackup(id = "h1", nickname = SECRET_HOST_NAME, address = SECRET_HOST_NAME, requireBiometric = true)))
         val text = BackupCodec.encodeEncrypted(withFlag, "pw-12345678", fast)
         val locked = (BackupCodec.read(text) as me.nick.squeezessh.backup.ReadBackup.Locked).file
         assertTrue(BackupCodec.decrypt(locked, "pw-12345678").hosts.single().requireBiometric)
@@ -140,7 +146,7 @@ class BackupCodecTest {
     private fun file(secrets: me.nick.squeezessh.backup.EncryptedSecrets? = null) = BackupFile(
         exportedAt = 1_700_000_000_000,
         appVersion = "test",
-        hosts = listOf(HostBackup(id = "h1", nickname = "pi5", address = "pi5", username = "pi")),
+        hosts = listOf(HostBackup(id = "h1", nickname = SECRET_HOST_NAME, address = SECRET_HOST_NAME, username = "pi")),
         settings = SettingsBackup(fontSizeSp = 16),
         secrets = secrets,
     )
