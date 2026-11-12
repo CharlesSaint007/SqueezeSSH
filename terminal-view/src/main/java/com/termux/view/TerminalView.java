@@ -304,7 +304,12 @@ public final class TerminalView extends View {
         // initially started with the alternate view or if activity is returned to from another app
         // and the alternate view was the one selected the last time.
         if (mClient.isTerminalViewSelected()) {
-            if (mClient.shouldEnforceCharBasedInput()) {
+            if (mClient.shouldUseNormalKeyboard()) {
+                // SqueezeSSH: ordinary text input, so suggestions and autocorrect work. Multi-line keeps Enter
+                // as a "\n" that becomes a carriage return below, and no enter action keeps it from being "Done".
+                outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                    | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
+            } else if (mClient.shouldEnforceCharBasedInput()) {
                 // Some keyboards seems do not reset the internal state on TYPE_NULL.
                 // Affects mostly Samsung stock keyboards.
                 // https://github.com/termux/termux-app/issues/686
@@ -331,14 +336,41 @@ public final class TerminalView extends View {
         // Note that IME_ACTION_NONE cannot be used as that makes it impossible to input newlines using the on-screen
         // keyboard on Android TV (see https://github.com/termux/termux-app/issues/221).
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
+        final boolean normalKeyboard = mClient.isTerminalViewSelected() && mClient.shouldUseNormalKeyboard();
+        if (normalKeyboard) outAttrs.imeOptions |= EditorInfo.IME_FLAG_NO_ENTER_ACTION;
 
         return new BaseInputConnection(this, true) {
+            /** SqueezeSSH: the composing text already shown in the terminal (normal-keyboard mode only). */
+            private String mMirrored = "";
+
+            /** Make the terminal show [text] instead of what is mirrored now. */
+            private void mirror(CharSequence text) {
+                ComposingDiff diff = ComposingDiff.between(mMirrored, text);
+                KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
+                for (int i = 0; i < diff.backspaces; i++) sendKeyEvent(deleteKey);
+                if (!diff.insert.isEmpty()) sendTextToTerminal(diff.insert);
+                mMirrored = text.toString();
+            }
+
+            @Override
+            public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                super.setComposingText(text, newCursorPosition);
+                if (normalKeyboard && mEmulator != null) mirror(text);
+                return true;
+            }
+
 
             @Override
             public boolean finishComposingText() {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
                 super.finishComposingText();
 
+                if (normalKeyboard) {
+                    // Already shown as it was typed.
+                    mMirrored = "";
+                    getEditable().clear();
+                    return true;
+                }
                 sendTextToTerminal(getEditable());
                 getEditable().clear();
                 return true;
@@ -352,6 +384,14 @@ public final class TerminalView extends View {
                 super.commitText(text, newCursorPosition);
 
                 if (mEmulator == null) return true;
+
+                if (normalKeyboard) {
+                    // The committed text replaces the composing text, which may have been autocorrected.
+                    mirror(text);
+                    mMirrored = "";
+                    getEditable().clear();
+                    return true;
+                }
 
                 Editable content = getEditable();
                 sendTextToTerminal(content);
@@ -367,6 +407,7 @@ public final class TerminalView extends View {
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
                 KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
                 for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
+                if (normalKeyboard) mMirrored = mMirrored.substring(0, Math.max(0, mMirrored.length() - leftLength));
                 return super.deleteSurroundingText(leftLength, rightLength);
             }
 

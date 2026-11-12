@@ -28,6 +28,7 @@ class SessionEntry(
     val themeOverridden: Boolean = false,
     /** Port forwards running over this session's connection, if it has any. */
     val forwards: ForwardController? = null,
+    keyboardAutocompleteAtStart: Boolean = false,
 ) {
     /** The connection dropped (network gone, server went away) rather than the shell exiting. */
     val droppedUnexpectedly: Boolean
@@ -40,6 +41,12 @@ class SessionEntry(
 
     /** Keep the screen on while this session is shown. Per session and not saved: it ends with the session. */
     var keepScreenOn by mutableStateOf(false)
+
+    /**
+     * Type with the keyboard's suggestions and autocorrect. Starts from the host's saved choice; toggling it in the
+     * session also saves it to that host.
+     */
+    var keyboardAutocomplete by mutableStateOf(keyboardAutocompleteAtStart)
 
     fun info() = SessionInfo(id, label, session.title.takeUnless { isProtected }, session.isRunning, startedAt)
 }
@@ -82,6 +89,7 @@ class SessionManager {
         themeOverridden: Boolean = false,
         hostId: String? = null,
         isProtected: Boolean = false,
+        keyboardAutocomplete: Boolean = false,
     ): SessionEntry {
         val session = TerminalSession(backend, TRANSCRIPT_ROWS, theme.toColorScheme(), client)
         val entry = SessionEntry(
@@ -93,6 +101,7 @@ class SessionManager {
             theme = theme,
             themeOverridden = themeOverridden,
             forwards = (backend as? SshShellBackend)?.forwards,
+            keyboardAutocompleteAtStart = keyboardAutocomplete,
         )
         entries += entry
         refresh()

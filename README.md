@@ -48,6 +48,9 @@ An open-source Android SSH client written in Kotlin, built as a replacement for 
 - **Key repeat:** hold any key above the keyboard (arrows, PGUP/PGDN, ESC, TAB, F1–F12, `/ | - ~`) and it types
   once, waits, then repeats like a hardware keyboard. CTRL and ALT stay on for the whole hold. *Settings → Key bar*
   sets the delay and speed, or turns repeat off.
+- **Keyboard autocomplete:** off by default, so the keyboard sends plain keys. Turn it on per host (host settings,
+  or the terminal's long-press menu) to get suggestions and autocorrect, handy when typing sentences to an AI tool.
+  Letters still appear as you type, and autocorrections are applied in place. Long-press toggles save to the host.
 - **Keep screen on:** long-press the terminal and switch on *Keep screen on* to stop the display sleeping while
   you're looking at that session. It's per session and isn't remembered.
 - **Group hosts:** the host list's menu has *Group hosts*, which lists hosts under their group names. Tap a group

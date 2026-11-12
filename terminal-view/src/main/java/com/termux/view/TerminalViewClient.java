@@ -32,6 +32,9 @@ public interface TerminalViewClient {
 
     boolean shouldEnforceCharBasedInput();
 
+    /** SqueezeSSH: type with the keyboard's suggestions and autocorrect instead of its plain-key mode. */
+    boolean shouldUseNormalKeyboard();
+
     boolean shouldUseCtrlSpaceWorkaround();
 
     boolean isTerminalViewSelected();

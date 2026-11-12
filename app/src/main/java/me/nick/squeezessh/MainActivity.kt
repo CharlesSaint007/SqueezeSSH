@@ -308,6 +308,7 @@ class MainActivity : FragmentActivity() {
                                         themeOverridden = override != null,
                                         hostId = h.id.takeIf { it != QUICK_ID },
                                         isProtected = h.requireBiometric,
+                                        keyboardAutocomplete = h.keyboardAutocomplete,
                                     )
                                     onSessionStarted()
                                     if (h.id != QUICK_ID) HostShortcuts.reportUsed(this@MainActivity, h.id)
@@ -338,6 +339,10 @@ class MainActivity : FragmentActivity() {
                                 keyRepeat = settings.keyRepeatConfig,
                                 snippets = snippets,
                                 onManageSnippets = { nav.navigate("snippets") },
+                                // Local shell and quick connect have no saved host: the choice lasts the session.
+                                onKeyboardAutocomplete = { on ->
+                                    entry.hostId?.let { id -> scope.launch { vault.setKeyboardAutocomplete(id, on) } }
+                                },
                                 onReconnect = entry.hostId?.let { hostId ->
                                     {
                                         // A new connection replaces the dead session, landing back on a terminal.

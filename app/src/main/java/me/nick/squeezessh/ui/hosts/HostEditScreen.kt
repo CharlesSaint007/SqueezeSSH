@@ -82,6 +82,7 @@ fun HostEditScreen(
     var themeId by remember { mutableStateOf(source?.themeId) }
     var keepalive by remember { mutableStateOf((source?.keepaliveSeconds ?: 30).toString()) }
     var agentForwarding by remember { mutableStateOf(source?.agentForwarding ?: false) }
+    var keyboardAutocomplete by remember { mutableStateOf(source?.keyboardAutocomplete ?: false) }
     var startupSnippetId by remember { mutableStateOf(source?.startupSnippetId) }
     val scope = rememberCoroutineScope()
     var requireBiometric by remember { mutableStateOf(source?.requireBiometric ?: false) }
@@ -252,6 +253,17 @@ fun HostEditScreen(
                 }
                 Switch(checked = agentForwarding, onCheckedChange = { agentForwarding = it })
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Keyboard autocomplete", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Use the keyboard's suggestions and autocorrect, which helps when typing prose. Off sends plain keys. Also in the terminal's long-press menu.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = keyboardAutocomplete, onCheckedChange = { keyboardAutocomplete = it })
+            }
 
             Button(
                 enabled = valid && initialForwards != null,
@@ -269,6 +281,7 @@ fun HostEditScreen(
                             themeId = themeId,
                             keepaliveSeconds = keepalive.toIntOrNull() ?: 30,
                             agentForwarding = agentForwarding,
+                            keyboardAutocomplete = keyboardAutocomplete,
                             startupSnippetId = startupSnippetId,
                             requireBiometric = requireBiometric,
                         ),

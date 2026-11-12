@@ -92,6 +92,8 @@ fun TerminalScreen(
     keyRepeat: KeyRepeatConfig,
     snippets: List<SnippetEntity>,
     onManageSnippets: () -> Unit,
+    /** Remember the keyboard-autocomplete choice on this session's saved host. */
+    onKeyboardAutocomplete: (Boolean) -> Unit,
     /** Connect this session's host again; null when it can't be (local shell, quick connect). */
     onReconnect: (() -> Unit)?,
     autoReconnect: Boolean,
@@ -102,6 +104,7 @@ fun TerminalScreen(
 ) {
     val context = LocalContext.current
     val state = remember(entry.id) { TerminalState() }
+    var appliedAutocomplete by remember(entry.id) { mutableStateOf(entry.keyboardAutocomplete) }
     var askExit by remember { mutableStateOf(false) }
 
     // An ended session has nothing to keep; otherwise follow the saved preference or ask.
@@ -184,6 +187,7 @@ fun TerminalScreen(
                             currentFontSp = { currentFontSp.value },
                             onFontSizeChange = { onFontSizeChangeState.value(it) },
                             volumeKeysFontSize = { volumeKeysState.value },
+                            normalKeyboard = { entry.keyboardAutocomplete },
                             onTap = { entry.keyBarVisible = !entry.keyBarVisible },
                             onLongPressed = { e ->
                                 state.view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -204,6 +208,11 @@ fun TerminalScreen(
             update = { view ->
                 // Keeps the screen on only while this session is on screen; the flag leaves with the view.
                 view.keepScreenOn = entry.keepScreenOn
+                // The keyboard reads the field type when it starts typing, so tell it when the type changed.
+                if (appliedAutocomplete != entry.keyboardAutocomplete) {
+                    appliedAutocomplete = entry.keyboardAutocomplete
+                    view.context.getSystemService(InputMethodManager::class.java).restartInput(view)
+                }
                 view.setTextSize(textPx)
                 view.attachSession(entry.session)
                 view.invalidate()
@@ -264,7 +273,15 @@ fun TerminalScreen(
             },
             // Only the long-press version of the dialog (the one that can select text) has session options.
             options = state.longPressEvent?.let {
-                SessionOptions(keepScreenOn = entry.keepScreenOn, onKeepScreenOn = { entry.keepScreenOn = it })
+                SessionOptions(
+                    keepScreenOn = entry.keepScreenOn,
+                    onKeepScreenOn = { entry.keepScreenOn = it },
+                    keyboardAutocomplete = entry.keyboardAutocomplete,
+                    onKeyboardAutocomplete = { on ->
+                        entry.keyboardAutocomplete = on
+                        onKeyboardAutocomplete(on)
+                    },
+                )
             },
             onDismiss = { state.panel = null; state.longPressEvent = null },
         )
@@ -425,6 +442,7 @@ private class ScreenViewClient(
     private val currentFontSp: () -> Int,
     private val onFontSizeChange: (Int) -> Unit,
     private val volumeKeysFontSize: () -> Boolean,
+    private val normalKeyboard: () -> Boolean,
     private val onTap: () -> Unit,
     private val onLongPressed: (MotionEvent) -> Unit,
 ) : TerminalViewClient {
@@ -450,6 +468,7 @@ private class ScreenViewClient(
 
     override fun shouldBackButtonBeMappedToEscape() = false
     override fun shouldEnforceCharBasedInput() = true
+    override fun shouldUseNormalKeyboard() = normalKeyboard()
     override fun shouldUseCtrlSpaceWorkaround() = false
     override fun isTerminalViewSelected() = true
     override fun copyModeChanged(copyMode: Boolean) = Unit

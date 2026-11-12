@@ -135,6 +135,13 @@ class BackupCodecTest {
     }
 
     @Test
+    fun keyboardAutocompleteSurvivesABackupAndOldBackupsReadAsOff() {
+        val withFlag = file().copy(hosts = listOf(HostBackup(id = "h1", nickname = "n", address = "a", keyboardAutocomplete = true)))
+        assertTrue(BackupCodec.decode(BackupCodec.encode(withFlag)).hosts.single().keyboardAutocomplete)
+        assertFalse(BackupCodec.decode(BackupCodec.encode(file()).replace("\"keyboardAutocomplete\": false,", "")).hosts.single().keyboardAutocomplete)
+    }
+
+    @Test
     fun settingsFallBackForMissingOrUnknownValues() {
         val current = Settings(fontSizeSp = 20, exitBehavior = ExitBehavior.Disconnect)
         val restored = SettingsBackup(fontSizeSp = 12, exitBehavior = "SomethingNew").toSettings(current)

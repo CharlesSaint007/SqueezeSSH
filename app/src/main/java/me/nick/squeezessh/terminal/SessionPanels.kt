@@ -69,6 +69,12 @@ fun SnippetPicker(
                         checked = options.keepScreenOn,
                         onChange = options.onKeepScreenOn,
                     )
+                    OptionRow(
+                        label = "Keyboard autocomplete",
+                        detail = "Suggestions and autocorrect while typing",
+                        checked = options.keyboardAutocomplete,
+                        onChange = options.onKeyboardAutocomplete,
+                    )
                 }
             }
         },
@@ -78,7 +84,12 @@ fun SnippetPicker(
 }
 
 /** The per-session switches shown in the long-press dialog. */
-class SessionOptions(val keepScreenOn: Boolean, val onKeepScreenOn: (Boolean) -> Unit)
+class SessionOptions(
+    val keepScreenOn: Boolean,
+    val onKeepScreenOn: (Boolean) -> Unit,
+    val keyboardAutocomplete: Boolean,
+    val onKeyboardAutocomplete: (Boolean) -> Unit,
+)
 
 /** A labelled switch row whose whole width is tappable, with its current state visible. */
 @Composable

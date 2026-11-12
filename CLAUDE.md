@@ -76,6 +76,9 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
 - Key bar: `CODE`/`TEXT` keys fire on **press** (`pointerInput` + `repeatKey`, so a held key repeats); every other
   key stays a plain `clickable` so panels and pages don't act on press. Sticky CTRL/ALT stay set through the whole
   hold and are released once by `onKeyEnd`, not per keystroke.
+- Keyboard autocomplete: `TerminalViewClient.shouldUseNormalKeyboard()` gates *everything* new in `TerminalView`
+  (input type, composing-text mirror via `ComposingDiff`); with it false the input connection is upstream's. The
+  long-press toggle writes one DB column (`Vault.setKeyboardAutocomplete`) so a protected host needs no biometric.
 - Host grouping and keep-screen-on are view state: `groupHosts`/`collapsedGroups` live in DataStore (device-local,
   not in backups); `SessionEntry.keepScreenOn` is per session and never saved.
 - Releases: the release job fails if the stable release would carry anything but `squeezessh-<version>.apk`.
