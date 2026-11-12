@@ -48,6 +48,7 @@ class Vault(private val db: AppDatabase, private val secrets: SecretStore) {
     /** Forget every saved host key; each host asks to be trusted again on its next connection. */
     suspend fun clearKnownHosts() = db.knownHosts().deleteAll()
     suspend fun markConnected(hostId: String) = db.hosts().markConnected(hostId)
+    suspend fun setKeyboardAutocomplete(hostId: String, on: Boolean) = db.hosts().setKeyboardAutocomplete(hostId, on)
 
     // ---- identities ----
 
