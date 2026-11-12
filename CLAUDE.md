@@ -73,6 +73,11 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
   `true` before they do). If the phone has no screen lock, `AuthRules` lets the off-ramps through so nobody is
   trapped. Emulator: set a PIN with `adb shell locksettings set-pin`, tap the system keypad by its UI nodes (key
   events don't reach it), and remove the PIN afterwards; screenshots of the PIN screen are black.
+- Key bar: `CODE`/`TEXT` keys fire on **press** (`pointerInput` + `repeatKey`, so a held key repeats); every other
+  key stays a plain `clickable` so panels and pages don't act on press. Sticky CTRL/ALT stay set through the whole
+  hold and are released once by `onKeyEnd`, not per keystroke.
+- Host grouping and keep-screen-on are view state: `groupHosts`/`collapsedGroups` live in DataStore (device-local,
+  not in backups); `SessionEntry.keepScreenOn` is per session and never saved.
 - Releases: the release job fails if the stable release would carry anything but `squeezessh-<version>.apk`.
 
 ## Testing against real things

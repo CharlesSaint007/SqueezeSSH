@@ -1,5 +1,6 @@
 package me.nick.squeezessh.ui
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -65,6 +66,9 @@ fun SettingsScreen(
     onKeepAwake: (Boolean) -> Unit,
     onVolumeKeysFontSize: (Boolean) -> Unit,
     onAutoReconnect: (Boolean) -> Unit,
+    onKeyRepeat: (Boolean) -> Unit,
+    onKeyRepeatDelay: (Int) -> Unit,
+    onKeyRepeatRate: (Int) -> Unit,
     biometricAvailable: Boolean,
     onRequireBiometricToOpen: (Boolean) -> Unit,
     onBitwarden: () -> Unit,
@@ -259,6 +263,38 @@ fun SettingsScreen(
                         )
                     }
                     Switch(checked = settings.volumeKeysFontSize, onCheckedChange = onVolumeKeysFontSize)
+                }
+            }
+
+            item {
+                SectionTitle("Key bar")
+                Row(
+                    Modifier.fillMaxWidth().clickable { onKeyRepeat(!settings.keyRepeat) }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Key repeat", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Holding a key above the keyboard types it again and again. CTRL, ALT and FN never repeat.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = settings.keyRepeat, onCheckedChange = onKeyRepeat)
+                }
+                if (settings.keyRepeat) {
+                    Text("Repeat delay: ${settings.keyRepeatDelayMs} ms", style = MaterialTheme.typography.bodyMedium)
+                    Slider(
+                        value = settings.keyRepeatDelayMs.toFloat(),
+                        onValueChange = { onKeyRepeatDelay((it / 50).roundToInt() * 50) },
+                        valueRange = Settings.MIN_REPEAT_DELAY_MS.toFloat()..Settings.MAX_REPEAT_DELAY_MS.toFloat(),
+                    )
+                    Text("Repeat speed: ${settings.keyRepeatPerSecond} per second", style = MaterialTheme.typography.bodyMedium)
+                    Slider(
+                        value = settings.keyRepeatPerSecond.toFloat(),
+                        onValueChange = { onKeyRepeatRate(it.roundToInt()) },
+                        valueRange = Settings.MIN_REPEAT_PER_SECOND.toFloat()..Settings.MAX_REPEAT_PER_SECOND.toFloat(),
+                    )
                 }
             }
 

@@ -108,6 +108,9 @@ data class SettingsBackup(
     val keepAwake: Boolean? = null,
     val volumeKeysFontSize: Boolean? = null,
     val autoReconnect: Boolean? = null,
+    val keyRepeat: Boolean? = null,
+    val keyRepeatDelayMs: Int? = null,
+    val keyRepeatPerSecond: Int? = null,
     val customThemes: List<me.nick.squeezessh.ui.theme.CustomThemeJson>? = null,
 )
 

@@ -17,6 +17,14 @@ class SettingsTest {
     }
 
     @Test
+    fun keyRepeatDefaultsOnWithFourHundredMsDelayAndTwentyPerSecond() {
+        val c = Settings().keyRepeatConfig
+        assertEquals(true, c.enabled)
+        assertEquals(400, c.delayMs)
+        assertEquals(50L, c.intervalMs)
+    }
+
+    @Test
     fun uiThemeFollowsTerminalUnlessSeparate() {
         val follow = Settings(terminalThemeId = BuiltInThemes.GruvboxDark.id, uiThemeId = BuiltInThemes.DefaultLight.id)
         assertEquals(BuiltInThemes.GruvboxDark, follow.uiTheme)

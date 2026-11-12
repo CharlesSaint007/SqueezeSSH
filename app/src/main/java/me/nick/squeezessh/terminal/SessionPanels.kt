@@ -41,6 +41,8 @@ fun SnippetPicker(
     onPick: (SnippetEntity) -> Unit,
     onManage: () -> Unit,
     onSelectText: (() -> Unit)?,
+    /** Session options shown under "Select text to copy" (long-press only). */
+    options: SessionOptions?,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -60,11 +62,37 @@ fun SnippetPicker(
                 if (onSelectText != null) {
                     TextButton(onClick = onSelectText, modifier = Modifier.padding(top = 4.dp)) { Text("Select text to copy") }
                 }
+                if (options != null) {
+                    OptionRow(
+                        label = "Keep screen on",
+                        detail = "Only for this session",
+                        checked = options.keepScreenOn,
+                        onChange = options.onKeepScreenOn,
+                    )
+                }
             }
         },
         confirmButton = { TextButton(onClick = onManage) { Text(if (snippets.isEmpty()) "Add snippets" else "Edit snippets") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/** The per-session switches shown in the long-press dialog. */
+class SessionOptions(val keepScreenOn: Boolean, val onKeepScreenOn: (Boolean) -> Unit)
+
+/** A labelled switch row whose whole width is tappable, with its current state visible. */
+@Composable
+private fun OptionRow(label: String, detail: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label)
+            detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
 }
 
 /** The session's port forwards, with their live state and a switch to start or stop each one. */
