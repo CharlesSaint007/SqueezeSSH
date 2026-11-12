@@ -3,6 +3,7 @@ package me.nick.squeezessh.terminal
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.padding
@@ -27,12 +28,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /** A key on the extra-keys row. */
 sealed interface ExtraKey {
@@ -119,6 +124,9 @@ fun ExtraKeysBar(
     activeModifiers: Set<StickyModifier>,
     keyboardVisible: Boolean,
     onKey: (ExtraKey) -> Unit,
+    /** A held CODE/TEXT key was let go: the keystrokes it sent are over. */
+    onKeyEnd: () -> Unit,
+    keyRepeat: KeyRepeatConfig,
     onToggleKeyboard: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -129,7 +137,14 @@ fun ExtraKeysBar(
                 Row(Modifier.fillMaxWidth().height(KEY_HEIGHT)) {
                     for (key in row) {
                         val active = key is ExtraKey.Modifier && key.modifier in activeModifiers
-                        KeyCell(onClick = { onKey(key) }) {
+                        val sends = key is ExtraKey.Code || key is ExtraKey.Text
+                        KeyCell(
+                            // Keys that type fire on press and repeat while held; the rest act on a tap.
+                            onPress = if (sends) ({ onKey(key) }) else null,
+                            onClick = { onKey(key) },
+                            keyRepeat = keyRepeat,
+                            onPressEnd = onKeyEnd,
+                        ) {
                             if (key is ExtraKey.Page && !key.functionKeys) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Undo,
@@ -171,14 +186,39 @@ fun ExtraKeysBar(
 }
 
 @Composable
-private fun RowScope.KeyCell(onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun RowScope.KeyCell(
+    onClick: () -> Unit,
+    onPress: (() -> Unit)? = null,
+    keyRepeat: KeyRepeatConfig = KeyRepeatConfig(enabled = false, delayMs = 0, perSecond = 1),
+    onPressEnd: () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
     val view = LocalView.current
+    val click = rememberUpdatedState(onClick)
+    val press = rememberUpdatedState(onPress)
+    val repeat = rememberUpdatedState(keyRepeat)
+    val pressEnd = rememberUpdatedState(onPressEnd)
+    val base = Modifier.weight(1f).fillMaxHeight()
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.weight(1f).fillMaxHeight().clickable {
-            // The same tick as a soft-keyboard key; it follows the system "touch feedback" setting.
-            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            onClick()
+        modifier = if (onPress == null) {
+            base.clickable {
+                // The same tick as a soft-keyboard key; it follows the system "touch feedback" setting.
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                click.value()
+            }
+        } else {
+            base.pointerInput(Unit) {
+                detectTapGestures(onPress = {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    coroutineScope {
+                        val typing = launch { repeatKey(repeat.value) { press.value?.invoke() } }
+                        tryAwaitRelease()
+                        typing.cancel()
+                    }
+                    pressEnd.value()
+                })
+            }
         },
     ) { content() }
 }

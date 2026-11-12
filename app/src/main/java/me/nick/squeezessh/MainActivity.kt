@@ -192,6 +192,10 @@ class MainActivity : FragmentActivity() {
                             identities = identities,
                             sessions = openSessions,
                             recentQuick = settings.recentQuickConnects,
+                            groupHosts = settings.groupHosts,
+                            collapsedGroups = settings.collapsedGroups,
+                            onGroupHosts = { on -> scope.launch { repo.setGroupHosts(on) } },
+                            onToggleGroup = { key, collapsed -> scope.launch { repo.setGroupCollapsed(key, collapsed) } },
                             onForgetQuick = { t -> scope.launch { repo.forgetQuickConnect(t) } },
                             onConnect = { host -> nav.navigate("connect/${host.id}") },
                             onQuickConnect = { q ->
@@ -331,6 +335,7 @@ class MainActivity : FragmentActivity() {
                                 fontSizeSp = settings.fontSizeSp,
                                 onFontSizeChange = { sp -> scope.launch { repo.setFontSize(sp) } },
                                 volumeKeysFontSize = settings.volumeKeysFontSize,
+                                keyRepeat = settings.keyRepeatConfig,
                                 snippets = snippets,
                                 onManageSnippets = { nav.navigate("snippets") },
                                 onReconnect = entry.hostId?.let { hostId ->
@@ -420,6 +425,9 @@ class MainActivity : FragmentActivity() {
                             onKeepAwake = { on -> scope.launch { repo.setKeepAwake(on) } },
                             onVolumeKeysFontSize = { on -> scope.launch { repo.setVolumeKeysFontSize(on) } },
                             onAutoReconnect = { on -> scope.launch { repo.setAutoReconnect(on) } },
+                            onKeyRepeat = { on -> scope.launch { repo.setKeyRepeat(on) } },
+                            onKeyRepeatDelay = { ms -> scope.launch { repo.setKeyRepeatDelay(ms) } },
+                            onKeyRepeatRate = { n -> scope.launch { repo.setKeyRepeatRate(n) } },
                             biometricAvailable = Biometrics.isAvailable(this@MainActivity),
                             onRequireBiometricToOpen = { on ->
                                 scope.launch {

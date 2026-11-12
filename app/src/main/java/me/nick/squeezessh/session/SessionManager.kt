@@ -38,6 +38,9 @@ class SessionEntry(
     /** Whether the key bar is shown; tapping the terminal toggles it, and each session remembers its own. */
     var keyBarVisible by mutableStateOf(true)
 
+    /** Keep the screen on while this session is shown. Per session and not saved: it ends with the session. */
+    var keepScreenOn by mutableStateOf(false)
+
     fun info() = SessionInfo(id, label, session.title.takeUnless { isProtected }, session.isRunning, startedAt)
 }
 

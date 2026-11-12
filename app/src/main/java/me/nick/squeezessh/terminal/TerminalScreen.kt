@@ -89,6 +89,7 @@ fun TerminalScreen(
     onFontSizeChange: (Int) -> Unit,
     /** Volume up/down change the font size while this screen is shown. */
     volumeKeysFontSize: Boolean,
+    keyRepeat: KeyRepeatConfig,
     snippets: List<SnippetEntity>,
     onManageSnippets: () -> Unit,
     /** Connect this session's host again; null when it can't be (local shell, quick connect). */
@@ -201,6 +202,8 @@ fun TerminalScreen(
                 }
             },
             update = { view ->
+                // Keeps the screen on only while this session is on screen; the flag leaves with the view.
+                view.keepScreenOn = entry.keepScreenOn
                 view.setTextSize(textPx)
                 view.attachSession(entry.session)
                 view.invalidate()
@@ -215,6 +218,8 @@ fun TerminalScreen(
                     if (state.alt) add(StickyModifier.Alt)
                 },
                 keyboardVisible = keyboardVisible,
+                keyRepeat = keyRepeat,
+                onKeyEnd = { state.releaseModifiers() },
                 onKey = { key ->
                     onExtraKey(key, state, entry.session)
                     // Tapping a Compose button moves focus off the terminal; hand it back.
@@ -256,6 +261,10 @@ fun TerminalScreen(
                     state.panel = null
                     state.view?.startTextSelectionMode(event)
                 }
+            },
+            // Only the long-press version of the dialog (the one that can select text) has session options.
+            options = state.longPressEvent?.let {
+                SessionOptions(keepScreenOn = entry.keepScreenOn, onKeepScreenOn = { entry.keepScreenOn = it })
             },
             onDismiss = { state.panel = null; state.longPressEvent = null },
         )
@@ -309,6 +318,7 @@ private fun ExitDialog(
     )
 }
 
+/** Send one keystroke. Sticky CTRL/ALT stay set so a held key repeats with them; the bar releases them at the end. */
 private fun onExtraKey(key: ExtraKey, state: TerminalState, session: TerminalSession) {
     when (key) {
         is ExtraKey.Modifier -> when (key.modifier) {
@@ -325,7 +335,6 @@ private fun onExtraKey(key: ExtraKey, state: TerminalState, session: TerminalSes
             if (state.ctrl) mod = mod or KeyHandler.KEYMOD_CTRL
             if (state.alt) mod = mod or KeyHandler.KEYMOD_ALT
             state.view?.handleKeyCode(key.keyCode, mod)
-            state.releaseModifiers()
         }
         is ExtraKey.Text -> {
             val view = state.view
@@ -334,7 +343,6 @@ private fun onExtraKey(key: ExtraKey, state: TerminalState, session: TerminalSes
             } else {
                 session.write(key.text)
             }
-            state.releaseModifiers()
         }
     }
 }
