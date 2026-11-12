@@ -210,9 +210,14 @@ private fun RowScope.KeyCell(
         } else {
             base.pointerInput(Unit) {
                 detectTapGestures(onPress = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     coroutineScope {
-                        val typing = launch { repeatKey(repeat.value) { press.value?.invoke() } }
+                        // A tick per keystroke, so a held key is felt repeating as well as seen.
+                        val typing = launch {
+                            repeatKey(repeat.value) {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                press.value?.invoke()
+                            }
+                        }
                         tryAwaitRelease()
                         typing.cancel()
                     }
