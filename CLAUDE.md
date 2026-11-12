@@ -86,5 +86,7 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
 - Look at screenshots of UI changes before calling them done.
 
 ## Where things stand
-v0.2.0 released; milestones 1–8 of the original plan are done. Ideas not built: Bitwarden login items for host
-passwords, WorkManager periodic sync, more fonts, theme import/export as files.
+**v0.3.2 released** (latest). Milestones 1–8 of the original plan are done. History: 0.2.0 host copy/long-press menus and
+encrypted backups; 0.3.0 biometric protection and Clear known hosts (the last Apache-2.0 release); 0.3.1 the GPL-3.0
+license and SSH agent forwarding; 0.3.2 Gradle 9.9.0 / AGP 9.5.1 and a flaky backup-test fix. Ideas not built: Bitwarden login
+items for host passwords, WorkManager periodic sync, more fonts, theme import/export as files.
