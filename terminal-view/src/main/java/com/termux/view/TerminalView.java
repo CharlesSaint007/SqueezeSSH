@@ -32,6 +32,7 @@ import android.view.autofill.AutofillValue;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Scroller;
 
 import androidx.annotation.Nullable;
@@ -311,7 +312,7 @@ public final class TerminalView extends View {
                 // SqueezeSSH: ordinary text input, so suggestions and autocorrect work. Multi-line keeps Enter
                 // as a "\n" that becomes a carriage return below, and no enter action keeps it from being "Done".
                 outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                    | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
+                    | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
             } else if (mClient.shouldEnforceCharBasedInput()) {
                 // Some keyboards seems do not reset the internal state on TYPE_NULL.
                 // Affects mostly Samsung stock keyboards.
@@ -358,15 +359,45 @@ public final class TerminalView extends View {
 
             /** Make the terminal show [text] in place of the current composing text. */
             private void replaceComposing(CharSequence text) {
-                ComposingDiff diff = ComposingDiff.between(composingText(), text);
+                rewriteTail(composingText(), text);
+            }
+
+            /** Turn the [oldTail] at the end of the terminal's line into [newTail]. */
+            private void rewriteTail(CharSequence oldTail, CharSequence newTail) {
+                ComposingDiff diff = ComposingDiff.between(oldTail, newTail);
                 // Straight to the terminal, in order: sendKeyEvent would queue them behind the text typed next.
                 for (int i = 0; i < diff.backspaces; i++) handleKeyCode(KeyEvent.KEYCODE_DEL, 0);
                 if (!diff.insert.isEmpty()) sendTextToTerminal(diff.insert);
             }
 
-            /** The line moved on (Enter, or a long run of typing): forget what the keyboard could still edit. */
+            /**
+             * Too much typed text to keep: drop it and have the keyboard re-read the field, so its idea of the text
+             * and ours start over together. (If they drift apart, its offsets no longer land on our text.)
+             */
             private void forgetTypedText() {
                 getEditable().clear();
+                post(() -> {
+                    InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.restartInput(TerminalView.this);
+                });
+            }
+
+            /**
+             * SqueezeSSH: newer keyboards (Gboard on Android 14+) apply a tapped suggestion such as "I'd" by replacing
+             * a range of the text they were given, rather than by recomposing it. Rewrite the end of the line to match.
+             */
+            @Override
+            public boolean replaceText(int start, int end, CharSequence text, int newCursorPosition,
+                                       android.view.inputmethod.TextAttribute textAttribute) {
+                Editable e = getEditable();
+                if (normalKeyboard && mEmulator != null && start >= 0 && start <= end && end <= e.length()) {
+                    String oldTail = e.subSequence(start, e.length()).toString();
+                    String newTail = text.toString() + e.subSequence(end, e.length());
+                    rewriteTail(oldTail, newTail);
+                }
+                boolean ok = super.replaceText(start, end, text, newCursorPosition, textAttribute);
+                if (normalKeyboard && getEditable().length() > MAX_TYPED_TEXT) forgetTypedText();
+                return ok;
             }
 
             @Override
@@ -377,11 +408,15 @@ public final class TerminalView extends View {
 
             @Override
             public boolean sendKeyEvent(KeyEvent event) {
-                // Enter ends the line, and a backspace key press edits text behind the keyboard's back; either way
-                // what it could still rewrite is no longer what is in the terminal.
-                if (normalKeyboard && event.getAction() == KeyEvent.ACTION_DOWN
-                    && (event.getKeyCode() == KeyEvent.KEYCODE_ENTER || event.getKeyCode() == KeyEvent.KEYCODE_DEL)) {
-                    forgetTypedText();
+                if (normalKeyboard && event.getAction() == KeyEvent.ACTION_DOWN) {
+                    Editable e = getEditable();
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_DEL && e.length() > 0) {
+                        // The keyboard deleted a character too; keep our copy of the text the same as its copy.
+                        e.delete(e.length() - 1, e.length());
+                    } else if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
+                        e.append('\n');
+                    }
+                    if (e.length() > MAX_TYPED_TEXT) forgetTypedText();
                 }
                 return super.sendKeyEvent(event);
             }
@@ -408,7 +443,7 @@ public final class TerminalView extends View {
                     // The committed text replaces the composing text, which may be an autocorrection of it.
                     replaceComposing(text);
                     boolean ok = super.commitText(text, newCursorPosition);
-                    if (text.toString().indexOf('\n') >= 0 || getEditable().length() > MAX_TYPED_TEXT) forgetTypedText();
+                    if (getEditable().length() > MAX_TYPED_TEXT) forgetTypedText();
                     return ok;
                 }
                 super.commitText(text, newCursorPosition);

@@ -80,7 +80,7 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
   (input type, live composing-text echo via `ComposingDiff`); with it false the input connection is upstream's. The
   Gboard reopens committed words (`setComposingRegion`) to autocorrect or apply a suggestion, so in this mode the
   editable keeps the typed text and rewrites go through `handleKeyCode(DEL)` in order, not the queued `sendKeyEvent`;
-  Enter/backspace clear it. Test with Gboard AND FUTO. The long-press toggle writes one DB column (`Vault.setKeyboardAutocomplete`) so a protected host needs no biometric.
+  Newer Gboard also edits via `replaceText` (suggestion taps, double-space period), handled the same way; the input type asks for `CAP_SENTENCES`. The editable mirrors Enter/backspace and is cleared with a `restartInput` only past 200 chars. Test with Gboard AND FUTO. The long-press toggle writes one DB column (`Vault.setKeyboardAutocomplete`) so a protected host needs no biometric.
 - Host grouping and keep-screen-on are view state: `groupHosts`/`collapsedGroups` live in DataStore (device-local,
   not in backups); `SessionEntry.keepScreenOn` is per session and never saved.
 - Releases: the release job fails if the stable release would carry anything but `squeezessh-<version>.apk`.
