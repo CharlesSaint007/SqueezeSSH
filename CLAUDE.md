@@ -77,8 +77,10 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
   key stays a plain `clickable` so panels and pages don't act on press. Sticky CTRL/ALT stay set through the whole
   hold and are released once by `onKeyEnd`, not per keystroke.
 - Keyboard autocomplete: `TerminalViewClient.shouldUseNormalKeyboard()` gates *everything* new in `TerminalView`
-  (input type, composing-text mirror via `ComposingDiff`); with it false the input connection is upstream's. The
-  long-press toggle writes one DB column (`Vault.setKeyboardAutocomplete`) so a protected host needs no biometric.
+  (input type, live composing-text echo via `ComposingDiff`); with it false the input connection is upstream's. The
+  Gboard reopens committed words (`setComposingRegion`) to autocorrect or apply a suggestion, so in this mode the
+  editable keeps the typed text and rewrites go through `handleKeyCode(DEL)` in order, not the queued `sendKeyEvent`;
+  Enter/backspace clear it. Test with Gboard AND FUTO. The long-press toggle writes one DB column (`Vault.setKeyboardAutocomplete`) so a protected host needs no biometric.
 - Host grouping and keep-screen-on are view state: `groupHosts`/`collapsedGroups` live in DataStore (device-local,
   not in backups); `SessionEntry.keepScreenOn` is per session and never saved.
 - Releases: the release job fails if the stable release would carry anything but `squeezessh-<version>.apk`.
