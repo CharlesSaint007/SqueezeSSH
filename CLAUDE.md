@@ -73,6 +73,16 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
   `true` before they do). If the phone has no screen lock, `AuthRules` lets the off-ramps through so nobody is
   trapped. Emulator: set a PIN with `adb shell locksettings set-pin`, tap the system keypad by its UI nodes (key
   events don't reach it), and remove the PIN afterwards; screenshots of the PIN screen are black.
+- Key bar: `CODE`/`TEXT` keys fire on **press** (`pointerInput` + `repeatKey`, so a held key repeats); every other
+  key stays a plain `clickable` so panels and pages don't act on press. Sticky CTRL/ALT stay set through the whole
+  hold and are released once by `onKeyEnd`, not per keystroke.
+- Keyboard autocomplete: `TerminalViewClient.shouldUseNormalKeyboard()` gates *everything* new in `TerminalView`
+  (input type, live composing-text echo via `ComposingDiff`); with it false the input connection is upstream's. The
+  Gboard reopens committed words (`setComposingRegion`) to autocorrect or apply a suggestion, so in this mode the
+  editable keeps the typed text and rewrites go through `handleKeyCode(DEL)` in order, not the queued `sendKeyEvent`;
+  Newer Gboard also edits via `replaceText` (suggestion taps, double-space period), handled the same way; the input type asks for `CAP_SENTENCES`. The editable mirrors Enter/backspace and is cleared with a `restartInput` only past 200 chars. Test with Gboard AND FUTO. The long-press toggle writes one DB column (`Vault.setKeyboardAutocomplete`) so a protected host needs no biometric.
+- Host grouping and keep-screen-on are view state: `groupHosts`/`collapsedGroups` live in DataStore (device-local,
+  not in backups); `SessionEntry.keepScreenOn` is per session and never saved.
 - Releases: the release job fails if the stable release would carry anything but `squeezessh-<version>.apk`.
 
 ## Testing against real things
@@ -86,7 +96,7 @@ Emulator: AVD `Medium_Phone_API_37.0` (`~/Library/Android/sdk/emulator/emulator 
 - Look at screenshots of UI changes before calling them done.
 
 ## Where things stand
-**v0.3.2 released** (latest). Milestones 1–8 of the original plan are done. History: 0.2.0 host copy/long-press menus and
+**v0.4.0 released** (latest). Milestones 1–8 of the original plan are done. History: 0.2.0 host copy/long-press menus and
 encrypted backups; 0.3.0 biometric protection and Clear known hosts (the last Apache-2.0 release); 0.3.1 the GPL-3.0
-license and SSH agent forwarding; 0.3.2 Gradle 9.9.0 / AGP 9.5.1 and a flaky backup-test fix. Ideas not built: Bitwarden login
+license and SSH agent forwarding; 0.3.2 Gradle 9.9.0 / AGP 9.5.1 and a flaky backup-test fix; 0.4.0 key repeat, keep screen on, host grouping and per-host keyboard autocomplete. Ideas not built: Bitwarden login
 items for host passwords, WorkManager periodic sync, more fonts, theme import/export as files.

@@ -79,7 +79,7 @@ class BackupService(
             knownHosts = db.knownHosts().getAll().map { KnownHostBackup(it.hostPort, it.keyType, it.fingerprint, it.publicKey, it.addedAt) },
             settings = SettingsBackup(
                 s.terminalThemeId, s.uiThemeMode.name, s.uiThemeId, s.fontSizeSp, s.exitBehavior.name, s.keepAwake, s.volumeKeysFontSize,
-                s.autoReconnect, s.customThemes.map(CustomThemeJson::of),
+                s.autoReconnect, s.keyRepeat, s.keyRepeatDelayMs, s.keyRepeatPerSecond, s.customThemes.map(CustomThemeJson::of),
             ),
             includedSecrets = included,
         )
@@ -182,6 +182,7 @@ class BackupService(
                 compression = h.compression,
                 startupSnippetId = h.startupSnippetId?.takeIf { it in validSnippetIds },
                 requireBiometric = h.requireBiometric,
+                keyboardAutocomplete = h.keyboardAutocomplete,
                 lastConnectedAt = h.lastConnectedAt,
                 connectCount = h.connectCount,
                 createdAt = h.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
@@ -254,6 +255,7 @@ private fun HostEntity.toBackup() = HostBackup(
     compression = compression,
     startupSnippetId = startupSnippetId,
     requireBiometric = requireBiometric,
+    keyboardAutocomplete = keyboardAutocomplete,
     lastConnectedAt = lastConnectedAt,
     connectCount = connectCount,
     createdAt = createdAt,
@@ -269,6 +271,11 @@ internal fun SettingsBackup.toSettings(current: Settings) = Settings(
     keepAwake = keepAwake ?: current.keepAwake,
     volumeKeysFontSize = volumeKeysFontSize ?: current.volumeKeysFontSize,
     autoReconnect = autoReconnect ?: current.autoReconnect,
+    keyRepeat = keyRepeat ?: current.keyRepeat,
+    keyRepeatDelayMs = (keyRepeatDelayMs ?: current.keyRepeatDelayMs)
+        .coerceIn(Settings.MIN_REPEAT_DELAY_MS, Settings.MAX_REPEAT_DELAY_MS),
+    keyRepeatPerSecond = (keyRepeatPerSecond ?: current.keyRepeatPerSecond)
+        .coerceIn(Settings.MIN_REPEAT_PER_SECOND, Settings.MAX_REPEAT_PER_SECOND),
     recentQuickConnects = current.recentQuickConnects,
     // Per-device security setting: restoring a backup on a phone without a screen lock mustn't lock the app.
     requireBiometricToOpen = current.requireBiometricToOpen,

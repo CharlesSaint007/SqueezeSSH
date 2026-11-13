@@ -1,5 +1,6 @@
 package me.nick.squeezessh.settings
 
+import me.nick.squeezessh.terminal.KeyRepeatConfig
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -7,6 +8,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -50,9 +52,20 @@ data class Settings(
     val recentQuickConnects: List<String> = emptyList(),
     /** Ask for a fingerprint / screen lock when the app is opened (and again after it's been in the background). */
     val requireBiometricToOpen: Boolean = false,
+    /** Show hosts under their group, collapsible by tapping the group name. Independent of the sort choice. */
+    val groupHosts: Boolean = false,
+    /** Keys ([me.nick.squeezessh.ui.hosts.HostGrouping.keyOf]) of the groups the user has collapsed. */
+    val collapsedGroups: Set<String> = emptySet(),
+    /** Holding a key-bar key repeats it, like a hardware keyboard. */
+    val keyRepeat: Boolean = true,
+    /** How long a key-bar key is held before it starts repeating. */
+    val keyRepeatDelayMs: Int = DEFAULT_REPEAT_DELAY_MS,
+    /** Repeated keystrokes per second once repeating. */
+    val keyRepeatPerSecond: Int = DEFAULT_REPEAT_PER_SECOND,
     /** Themes made in the theme editor. */
     val customThemes: List<TerminalTheme> = emptyList(),
 ) {
+    val keyRepeatConfig: KeyRepeatConfig get() = KeyRepeatConfig(keyRepeat, keyRepeatDelayMs, keyRepeatPerSecond)
     val themes: ThemeCatalog get() = ThemeCatalog(customThemes)
     val terminalTheme: TerminalTheme get() = themes.byId(terminalThemeId)
 
@@ -67,6 +80,12 @@ data class Settings(
         const val DEFAULT_FONT_SIZE_SP = 14
         const val MIN_FONT_SIZE_SP = 6
         const val MAX_FONT_SIZE_SP = 32
+        const val DEFAULT_REPEAT_DELAY_MS = 400
+        const val MIN_REPEAT_DELAY_MS = 150
+        const val MAX_REPEAT_DELAY_MS = 1000
+        const val DEFAULT_REPEAT_PER_SECOND = 20
+        const val MIN_REPEAT_PER_SECOND = 5
+        const val MAX_REPEAT_PER_SECOND = 40
     }
 }
 
@@ -88,6 +107,13 @@ class SettingsRepository(context: Context) {
             volumeKeysFontSize = p[VOLUME_KEYS_FONT] ?: true,
             autoReconnect = p[AUTO_RECONNECT] ?: true,
             requireBiometricToOpen = p[REQUIRE_BIOMETRIC] ?: false,
+            keyRepeat = p[KEY_REPEAT] ?: true,
+            keyRepeatDelayMs = (p[KEY_REPEAT_DELAY] ?: Settings.DEFAULT_REPEAT_DELAY_MS)
+                .coerceIn(Settings.MIN_REPEAT_DELAY_MS, Settings.MAX_REPEAT_DELAY_MS),
+            keyRepeatPerSecond = (p[KEY_REPEAT_RATE] ?: Settings.DEFAULT_REPEAT_PER_SECOND)
+                .coerceIn(Settings.MIN_REPEAT_PER_SECOND, Settings.MAX_REPEAT_PER_SECOND),
+            groupHosts = p[GROUP_HOSTS] ?: false,
+            collapsedGroups = p[COLLAPSED_GROUPS] ?: emptySet(),
             recentQuickConnects = p[RECENT_QUICK]?.split('\n')?.filter { it.isNotBlank() }.orEmpty(),
             customThemes = p[CUSTOM_THEMES]?.let(::decodeThemes).orEmpty(),
         )
@@ -104,6 +130,20 @@ class SettingsRepository(context: Context) {
     suspend fun setKeepAwake(enabled: Boolean) = store.edit { it[KEEP_AWAKE] = enabled }
     suspend fun setVolumeKeysFontSize(enabled: Boolean) = store.edit { it[VOLUME_KEYS_FONT] = enabled }
     suspend fun setAutoReconnect(enabled: Boolean) = store.edit { it[AUTO_RECONNECT] = enabled }
+    suspend fun setKeyRepeat(enabled: Boolean) = store.edit { it[KEY_REPEAT] = enabled }
+    suspend fun setKeyRepeatDelay(ms: Int) = store.edit {
+        it[KEY_REPEAT_DELAY] = ms.coerceIn(Settings.MIN_REPEAT_DELAY_MS, Settings.MAX_REPEAT_DELAY_MS)
+    }
+    suspend fun setKeyRepeatRate(perSecond: Int) = store.edit {
+        it[KEY_REPEAT_RATE] = perSecond.coerceIn(Settings.MIN_REPEAT_PER_SECOND, Settings.MAX_REPEAT_PER_SECOND)
+    }
+    suspend fun setGroupHosts(enabled: Boolean) = store.edit { it[GROUP_HOSTS] = enabled }
+
+    /** Collapse or expand one group of the host list. */
+    suspend fun setGroupCollapsed(key: String, collapsed: Boolean) = store.edit {
+        val current = it[COLLAPSED_GROUPS] ?: emptySet()
+        it[COLLAPSED_GROUPS] = if (collapsed) current + key else current - key
+    }
     suspend fun setRequireBiometricToOpen(enabled: Boolean) = store.edit { it[REQUIRE_BIOMETRIC] = enabled }
 
     /** Move [target] to the front of the quick-connect history, keeping the last [MAX_RECENT_QUICK]. */
@@ -141,6 +181,9 @@ class SettingsRepository(context: Context) {
         it[KEEP_AWAKE] = s.keepAwake
         it[VOLUME_KEYS_FONT] = s.volumeKeysFontSize
         it[AUTO_RECONNECT] = s.autoReconnect
+        it[KEY_REPEAT] = s.keyRepeat
+        it[KEY_REPEAT_DELAY] = s.keyRepeatDelayMs.coerceIn(Settings.MIN_REPEAT_DELAY_MS, Settings.MAX_REPEAT_DELAY_MS)
+        it[KEY_REPEAT_RATE] = s.keyRepeatPerSecond.coerceIn(Settings.MIN_REPEAT_PER_SECOND, Settings.MAX_REPEAT_PER_SECOND)
         it[CUSTOM_THEMES] = encodeThemes(s.customThemes)
     }
 
@@ -154,6 +197,11 @@ class SettingsRepository(context: Context) {
         val VOLUME_KEYS_FONT = booleanPreferencesKey("volume_keys_font_size")
         val RECENT_QUICK = stringPreferencesKey("recent_quick_connects")
         val AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
+        val KEY_REPEAT = booleanPreferencesKey("key_repeat")
+        val KEY_REPEAT_DELAY = intPreferencesKey("key_repeat_delay_ms")
+        val KEY_REPEAT_RATE = intPreferencesKey("key_repeat_per_second")
+        val GROUP_HOSTS = booleanPreferencesKey("group_hosts")
+        val COLLAPSED_GROUPS = stringSetPreferencesKey("collapsed_groups")
         val REQUIRE_BIOMETRIC = booleanPreferencesKey("require_biometric_to_open")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         private val themeJson = Json { ignoreUnknownKeys = true }

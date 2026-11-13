@@ -49,6 +49,8 @@ data class HostEntity(
     val startupSnippetId: String? = null,
     /** Ask for a fingerprint / screen lock each time before connecting to this host. */
     @ColumnInfo(defaultValue = "0") val requireBiometric: Boolean = false,
+    /** Type with the keyboard's normal suggestions and autocorrect instead of the terminal's plain-key mode. */
+    @ColumnInfo(defaultValue = "0") val keyboardAutocomplete: Boolean = false,
     val lastConnectedAt: Long? = null,
     val connectCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),

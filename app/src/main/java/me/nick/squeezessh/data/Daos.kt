@@ -23,6 +23,10 @@ interface HostDao {
     @Query("UPDATE hosts SET lastConnectedAt = :at, connectCount = connectCount + 1 WHERE id = :id")
     suspend fun markConnected(id: String, at: Long = System.currentTimeMillis())
 
+    /** One column only, so flipping it never needs the biometric check an edit of a protected host does. */
+    @Query("UPDATE hosts SET keyboardAutocomplete = :on WHERE id = :id")
+    suspend fun setKeyboardAutocomplete(id: String, on: Boolean)
+
     @Query("SELECT * FROM hosts")
     suspend fun getAll(): List<HostEntity>
 

@@ -1,6 +1,7 @@
 package me.nick.squeezessh.ui.hosts
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -48,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -93,6 +98,12 @@ fun HostsScreen(
     onConnect: (HostEntity) -> Unit,
     onQuickConnect: (QuickConnect) -> Unit,
     onForgetQuick: (String) -> Unit,
+    /** "Group hosts" is on: hosts are listed under their group. */
+    groupHosts: Boolean,
+    collapsedGroups: Set<String>,
+    onGroupHosts: (Boolean) -> Unit,
+    /** Collapse (true) or expand (false) the group with this key. */
+    onToggleGroup: (key: String, collapsed: Boolean) -> Unit,
     onAddHost: () -> Unit,
     onEditHost: (HostEntity) -> Unit,
     onCopyHost: (HostEntity) -> Unit,
@@ -114,20 +125,13 @@ fun HostsScreen(
     val quick = QuickConnect.parse(query)?.takeIf { query.contains('@') || query.contains(':') }
     val identityById = identities.associateBy { it.id }
 
-    val visible = hosts
-        .filter { h ->
-            // A protected host's address is hidden, so it must not be searchable either (typing "192" would reveal it).
-            query.isBlank() ||
-                listOf(h.nickname, if (h.requireBiometric) "" else h.address, h.group.orEmpty())
-                    .any { it.contains(query.trim(), ignoreCase = true) }
-        }
-        .let { list ->
-            when (sort) {
-                HostSort.Name -> list
-                HostSort.Recent -> list.sortedByDescending { it.lastConnectedAt ?: 0 }
-                HostSort.Frequent -> list.sortedByDescending { it.connectCount }
-            }
-        }
+    val matching = hosts.filter { h ->
+        // A protected host's address is hidden, so it must not be searchable either (typing "192" would reveal it).
+        query.isBlank() ||
+            listOf(h.nickname, if (h.requireBiometric) "" else h.address, h.group.orEmpty())
+                .any { it.contains(query.trim(), ignoreCase = true) }
+    }
+    val sections = HostGrouping.sections(matching, sort, groupHosts, collapsedGroups, searching = query.isNotBlank())
 
     Scaffold(
         topBar = {
@@ -156,6 +160,11 @@ fun HostsScreen(
                             text = { Text("Settings") },
                             leadingIcon = { Icon(Icons.Filled.Settings, null) },
                             onClick = { menuOpen = false; onSettings() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Group hosts" + if (groupHosts) "  ✓" else "") },
+                            leadingIcon = { Icon(Icons.Filled.FolderOpen, null) },
+                            onClick = { onGroupHosts(!groupHosts); menuOpen = false },
                         )
                         for (option in HostSort.entries) {
                             DropdownMenuItem(
@@ -246,52 +255,66 @@ fun HostsScreen(
                     )
                 }
             }
-            items(visible, key = { it.id }) { host ->
-                val user = host.identityId?.let { identityById[it]?.username } ?: host.username
-                Card(
-                    Modifier.fillMaxWidth().combinedClickable(
-                        onClick = { onConnect(host) },
-                        onLongClick = { menuHost = host },
-                    ),
-                ) {
-                    HostContextMenu(
-                        expanded = menuHost?.id == host.id,
-                        onDismiss = { menuHost = null },
-                        onEdit = { menuHost = null; onEditHost(host) },
-                        onCopy = { menuHost = null; onCopyHost(host) },
-                        onDelete = { menuHost = null; deleting = host },
-                    )
-                    ListItem(
-                        headlineContent = { Text(host.nickname) },
-                        supportingContent = {
-                            Column {
-                                Text(
-                                    if (host.requireBiometric) {
-                                        Masking.maskedTarget(user, host.address)
-                                    } else {
-                                        buildString {
-                                            if (user != null) append("$user@")
-                                            append(host.address)
-                                            if (host.port != 22) append(":${host.port}")
-                                        }
-                                    },
-                                )
-                                if (host.group != null) {
-                                    Text(host.group, style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        },
-                        leadingContent = { Icon(Icons.Filled.Computer, contentDescription = null) },
-                        trailingContent = {
-                            Row {
-                                IconButton(onClick = { onEditHost(host) }) {
-                                    Icon(Icons.Filled.Edit, contentDescription = "Edit ${host.nickname}")
-                                }
-                            }
-                        },
-                    )
+            for (section in sections) {
+                if (section.title != null) {
+                    item(key = "g-${section.key}") {
+                        GroupHeader(
+                            title = section.title,
+                            count = section.hosts.size,
+                            collapsed = section.collapsed,
+                            onClick = { onToggleGroup(section.key.orEmpty(), !section.collapsed) },
+                        )
+                    }
                 }
-            }
+                if (!section.collapsed) {
+                    items(section.hosts, key = { it.id }) { host ->
+                        val user = host.identityId?.let { identityById[it]?.username } ?: host.username
+                        Card(
+                            Modifier.fillMaxWidth().combinedClickable(
+                                onClick = { onConnect(host) },
+                                onLongClick = { menuHost = host },
+                            ),
+                        ) {
+                            HostContextMenu(
+                                expanded = menuHost?.id == host.id,
+                                onDismiss = { menuHost = null },
+                                onEdit = { menuHost = null; onEditHost(host) },
+                                onCopy = { menuHost = null; onCopyHost(host) },
+                                onDelete = { menuHost = null; deleting = host },
+                            )
+                            ListItem(
+                                headlineContent = { Text(host.nickname) },
+                                supportingContent = {
+                                    Column {
+                                        Text(
+                                            if (host.requireBiometric) {
+                                                Masking.maskedTarget(user, host.address)
+                                            } else {
+                                                buildString {
+                                                    if (user != null) append("$user@")
+                                                    append(host.address)
+                                                    if (host.port != 22) append(":${host.port}")
+                                                }
+                                            },
+                                        )
+                                        if (host.group != null) {
+                                            Text(host.group, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                },
+                                leadingContent = { Icon(Icons.Filled.Computer, contentDescription = null) },
+                                trailingContent = {
+                                    Row {
+                                        IconButton(onClick = { onEditHost(host) }) {
+                                            Icon(Icons.Filled.Edit, contentDescription = "Edit ${host.nickname}")
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+                }
         }
     }
 
@@ -302,6 +325,26 @@ fun HostsScreen(
             text = { Text("The saved host and its port forwards are removed. Identities and keys are kept.") },
             confirmButton = { TextButton(onClick = { deleting = null; onDeleteHost(host) }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** A group's name with a chevron on its left; tapping it collapses or expands the hosts under it. */
+@Composable
+private fun GroupHeader(title: String, count: Int, collapsed: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 8.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (collapsed) Icons.Filled.ChevronRight else Icons.Filled.ExpandMore,
+            contentDescription = if (collapsed) "Expand $title" else "Collapse $title",
+        )
+        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 4.dp))
+        Text(
+            "  ($count)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

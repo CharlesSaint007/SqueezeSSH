@@ -59,6 +59,7 @@ data class HostBackup(
     val compression: Boolean = false,
     val startupSnippetId: String? = null,
     val requireBiometric: Boolean = false,
+    val keyboardAutocomplete: Boolean = false,
     val lastConnectedAt: Long? = null,
     val connectCount: Int = 0,
     val createdAt: Long = 0,
@@ -108,6 +109,9 @@ data class SettingsBackup(
     val keepAwake: Boolean? = null,
     val volumeKeysFontSize: Boolean? = null,
     val autoReconnect: Boolean? = null,
+    val keyRepeat: Boolean? = null,
+    val keyRepeatDelayMs: Int? = null,
+    val keyRepeatPerSecond: Int? = null,
     val customThemes: List<me.nick.squeezessh.ui.theme.CustomThemeJson>? = null,
 )
 

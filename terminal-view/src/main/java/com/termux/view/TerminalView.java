@@ -32,6 +32,7 @@ import android.view.autofill.AutofillValue;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Scroller;
 
 import androidx.annotation.Nullable;
@@ -297,6 +298,9 @@ public final class TerminalView extends View {
         return true;
     }
 
+    /** SqueezeSSH: how much typed text a normal keyboard may still rewrite before it is forgotten. */
+    private static final int MAX_TYPED_TEXT = 200;
+
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
         // Ensure that inputType is only set if TerminalView is selected view with the keyboard and
@@ -304,7 +308,12 @@ public final class TerminalView extends View {
         // initially started with the alternate view or if activity is returned to from another app
         // and the alternate view was the one selected the last time.
         if (mClient.isTerminalViewSelected()) {
-            if (mClient.shouldEnforceCharBasedInput()) {
+            if (mClient.shouldUseNormalKeyboard()) {
+                // SqueezeSSH: ordinary text input, so suggestions and autocorrect work. Multi-line keeps Enter
+                // as a "\n" that becomes a carriage return below, and no enter action keeps it from being "Done".
+                outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                    | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
+            } else if (mClient.shouldEnforceCharBasedInput()) {
                 // Some keyboards seems do not reset the internal state on TYPE_NULL.
                 // Affects mostly Samsung stock keyboards.
                 // https://github.com/termux/termux-app/issues/686
@@ -331,14 +340,94 @@ public final class TerminalView extends View {
         // Note that IME_ACTION_NONE cannot be used as that makes it impossible to input newlines using the on-screen
         // keyboard on Android TV (see https://github.com/termux/termux-app/issues/221).
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
+        final boolean normalKeyboard = mClient.isTerminalViewSelected() && mClient.shouldUseNormalKeyboard();
+        if (normalKeyboard) outAttrs.imeOptions |= EditorInfo.IME_FLAG_NO_ENTER_ACTION;
 
         return new BaseInputConnection(this, true) {
+            /**
+             * SqueezeSSH: the text under the keyboard's composing region. It is already in the terminal (committed
+             * words are kept in the editable, not cleared, because Gboard re-opens them to autocorrect or swap in
+             * a suggestion), so replacing it means erasing it and typing its replacement.
+             */
+            private String composingText() {
+                Editable e = getEditable();
+                int start = getComposingSpanStart(e), end = getComposingSpanEnd(e);
+                // Only text at the end of the line can be rewritten by backspacing; anything else is left alone.
+                if (start < 0 || end < start || end != e.length()) return "";
+                return e.subSequence(start, end).toString();
+            }
+
+            /** Make the terminal show [text] in place of the current composing text. */
+            private void replaceComposing(CharSequence text) {
+                rewriteTail(composingText(), text);
+            }
+
+            /** Turn the [oldTail] at the end of the terminal's line into [newTail]. */
+            private void rewriteTail(CharSequence oldTail, CharSequence newTail) {
+                ComposingDiff diff = ComposingDiff.between(oldTail, newTail);
+                // Straight to the terminal, in order: sendKeyEvent would queue them behind the text typed next.
+                for (int i = 0; i < diff.backspaces; i++) handleKeyCode(KeyEvent.KEYCODE_DEL, 0);
+                if (!diff.insert.isEmpty()) sendTextToTerminal(diff.insert);
+            }
+
+            /**
+             * Too much typed text to keep: drop it and have the keyboard re-read the field, so its idea of the text
+             * and ours start over together. (If they drift apart, its offsets no longer land on our text.)
+             */
+            private void forgetTypedText() {
+                getEditable().clear();
+                post(() -> {
+                    InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.restartInput(TerminalView.this);
+                });
+            }
+
+            /**
+             * SqueezeSSH: newer keyboards (Gboard on Android 14+) apply a tapped suggestion such as "I'd" by replacing
+             * a range of the text they were given, rather than by recomposing it. Rewrite the end of the line to match.
+             */
+            @Override
+            public boolean replaceText(int start, int end, CharSequence text, int newCursorPosition,
+                                       android.view.inputmethod.TextAttribute textAttribute) {
+                Editable e = getEditable();
+                if (normalKeyboard && mEmulator != null && start >= 0 && start <= end && end <= e.length()) {
+                    String oldTail = e.subSequence(start, e.length()).toString();
+                    String newTail = text.toString() + e.subSequence(end, e.length());
+                    rewriteTail(oldTail, newTail);
+                }
+                boolean ok = super.replaceText(start, end, text, newCursorPosition, textAttribute);
+                if (normalKeyboard && getEditable().length() > MAX_TYPED_TEXT) forgetTypedText();
+                return ok;
+            }
+
+            @Override
+            public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                if (normalKeyboard && mEmulator != null) replaceComposing(text);
+                return super.setComposingText(text, newCursorPosition);
+            }
+
+            @Override
+            public boolean sendKeyEvent(KeyEvent event) {
+                if (normalKeyboard && event.getAction() == KeyEvent.ACTION_DOWN) {
+                    Editable e = getEditable();
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_DEL && e.length() > 0) {
+                        // The keyboard deleted a character too; keep our copy of the text the same as its copy.
+                        e.delete(e.length() - 1, e.length());
+                    } else if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
+                        e.append('\n');
+                    }
+                    if (e.length() > MAX_TYPED_TEXT) forgetTypedText();
+                }
+                return super.sendKeyEvent(event);
+            }
 
             @Override
             public boolean finishComposingText() {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
                 super.finishComposingText();
 
+                // Normal-keyboard text is already in the terminal; the editable keeps it for later rewrites.
+                if (normalKeyboard) return true;
                 sendTextToTerminal(getEditable());
                 getEditable().clear();
                 return true;
@@ -348,6 +437,14 @@ public final class TerminalView extends View {
             public boolean commitText(CharSequence text, int newCursorPosition) {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
                     mClient.logInfo(LOG_TAG, "IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
+                }
+                if (normalKeyboard) {
+                    if (mEmulator == null) return super.commitText(text, newCursorPosition);
+                    // The committed text replaces the composing text, which may be an autocorrection of it.
+                    replaceComposing(text);
+                    boolean ok = super.commitText(text, newCursorPosition);
+                    if (getEditable().length() > MAX_TYPED_TEXT) forgetTypedText();
+                    return ok;
                 }
                 super.commitText(text, newCursorPosition);
 
@@ -365,8 +462,13 @@ public final class TerminalView extends View {
                     mClient.logInfo(LOG_TAG, "IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
                 }
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
-                KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
-                for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
+                if (normalKeyboard) {
+                    // In order with the text typed around it (see replaceComposing).
+                    for (int i = 0; i < leftLength; i++) handleKeyCode(KeyEvent.KEYCODE_DEL, 0);
+                } else {
+                    KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
+                    for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
+                }
                 return super.deleteSurroundingText(leftLength, rightLength);
             }
 
